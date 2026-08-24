@@ -432,7 +432,8 @@ function escapeHtml(s){
 function escapeAttr(s){ return escapeHtml(s).replace(/"/g,'&quot;'); }
 
 /* ===================== 狀態 ===================== */
-let state = { trips: [], view: 'list', currentTripId: null };
+const STORAGE_KEY = 'tripPlannerAllInOne_trips_v1';
+let state = { trips: loadTrips(), view: 'list', currentTripId: null };
 let ui = {
   draft: {destination:'', start:'', end:''},
   newItem: {},
@@ -447,8 +448,6 @@ let ui = {
   collaboratorEmail: ''
 };
 let saveTimer = null;
-
-const STORAGE_KEY = 'tripPlannerAllInOne_trips_v1';
 
 function loadTrips(){
   try{
@@ -523,12 +522,12 @@ async function syncFromSupabase() {
   renderAuthBar();
 
   try {
-    const { data: userTrips, error: err1 } = await supabaseClient
+    const { data: userTrips } = await supabaseClient
       .from('trips')
       .select('*')
       .eq('user_id', currentUser.id);
 
-    const { data: collabData, error: err2 } = await supabaseClient
+    const { data: collabData } = await supabaseClient
       .from('trip_collaborators')
       .select('trip_id')
       .eq('email', currentUser.email);
@@ -877,7 +876,7 @@ function renderListView(){
   return `
     ${renderAuthBar()}
     <div class="brand">
-      <h1><span class="stamp-icon">🛂</span>旅行規劃All in One</h1>
+      <h1><span class="stamp-icon">定</span>旅行規劃All in One</h1>
       <span class="made-by">Made By Luluplore</span>
     </div>
     <p class="brand-sub">完整記錄每趟旅程，一目了然旅行的準備進度！</p>
@@ -1402,6 +1401,7 @@ app.addEventListener('pointerdown', (e)=>{
   document.addEventListener('pointerup', onDragEnd);
 });
 
+/* ===================== 全域 Click 事件 handlers ===================== */
 app.addEventListener('click', async (e)=>{
   const el = e.target.closest('[data-action]');
   if(!el) return;
@@ -1501,8 +1501,6 @@ app.addEventListener('click', async (e)=>{
     };
     render();
   }
-  else if(action === 'modal-noop'){
-  }
   else if(action === 'confirm-cancel'){
     ui.confirm = null;
     render();
@@ -1536,9 +1534,11 @@ app.addEventListener('click', async (e)=>{
     const trip = state.trips.find(t=>t.id===state.currentTripId);
     const cat = el.dataset.cat, id = el.dataset.item;
     const item = trip.categories[cat].items.find(i=>i.id===id);
-    item.checked = !item.checked;
-    scheduleSave();
-    render();
+    if(item){
+      item.checked = !item.checked;
+      scheduleSave();
+      render();
+    }
   }
   else if(action === 'toggle-expand'){
     const key = el.dataset.cat + '|' + el.dataset.item;
@@ -1555,40 +1555,6 @@ app.addEventListener('click', async (e)=>{
     if(ui.summaryOpen.has(cat)) ui.summaryOpen.delete(cat); else ui.summaryOpen.add(cat);
     render();
   }
-  else if(action === 'bulk-add'){
-    const trip = state.trips.find(t=>t.id===state.currentTripId);
-    const cat = el.dataset.cat;
-    const raw = ui.bulkDraft[cat] || '';
-    const lines = raw.split('\n').map(s=>s.trim()).filter(Boolean);
-    if(cat === 'expenses'){
-      let currentDate = '';
-      let parsedCount = 0;
-      lines.forEach(line=>{
-        const headerDate = matchWholeDate(line, trip);
-        if(headerDate){ currentDate = headerDate; return; }
-        const item = parseExpenseLine(line, trip, currentDate);
-        if(item){ trip.categories.expenses.items.push(item); parsedCount++; }
-      });
-      showToast(`已新增 ${parsedCount} 筆花費，記得檢查一下有沒有拆錯的欄位`);
-    } else if(cat === 'routePlanning'){
-      let currentDay = '';
-      lines.forEach(line=>{
-        const headerDay = matchDayHeader(line);
-        if(headerDay){ currentDay = headerDay; return; }
-        trip.categories.routePlanning.items.push({ id: uid(), text: line, checked:false, note:'', link:'', day: currentDay });
-      });
-    } else {
-      lines.forEach(text=>{
-        const item = { id: uid(), text, checked:false, note:'', link:'' };
-        if(cat === 'exchange') item.amount = '';
-        trip.categories[cat].items.push(item);
-      });
-    }
-    ui.bulkDraft[cat] = '';
-    ui.bulkOpen.delete(cat);
-    scheduleSave();
-    render();
-  }
   else if(action === 'delete-item'){
     const trip = state.trips.find(t=>t.id===state.currentTripId);
     const cat = el.dataset.cat, id = el.dataset.item;
@@ -1597,106 +1563,136 @@ app.addEventListener('click', async (e)=>{
     render();
   }
   else if(action === 'add-item'){
-    const trip = state.trips.find(t=>t.id===state.currentTripId);
     const cat = el.dataset.cat;
+    const trip = state.trips.find(t=>t.id===state.currentTripId);
     const draft = ui.newItem[cat] || {};
-    const hasText = draft.text && draft.text.trim();
-    if(cat === 'expenses' || cat === 'exchange'){
-      if(!hasText && !draft.amount) return;
-    } else if(!hasText){
-      return;
-    }
-    const item = { id: uid(), text: (draft.text||'').trim(), checked:false, note:'', link:'' };
-    if(cat === 'routePlanning') item.day = draft.day || '';
-    if(cat === 'exchange') { item.amount = draft.amount || ''; item.currency = draft.currency || ''; }
-    if(cat === 'expenses'){
-      item.amount = draft.amount || '';
-      item.category = draft.category || '';
-      item.payment = draft.payment || '';
-      item.currency = draft.currency || '';
-      item.date = draft.date || '';
-    }
-    trip.categories[cat].items.push(item);
-    if(cat === 'expenses'){
-      ui.newItem[cat] = { category: draft.category||'', payment: draft.payment||'', currency: draft.currency||'' };
-    } else if(cat === 'exchange'){
-      ui.newItem[cat] = { currency: draft.currency||'' };
-    } else if(cat === 'routePlanning'){
-      ui.newItem[cat] = { day: draft.day||'' };
-    } else {
-      ui.newItem[cat] = {};
-    }
+    if(!draft.text && !draft.amount) return;
+
+    const newItem = {
+      id: uid(),
+      text: draft.text || '',
+      checked: false,
+      note: '',
+      link: '',
+      day: draft.day || '',
+      amount: draft.amount || '',
+      currency: draft.currency || '',
+      category: draft.category || '',
+      payment: draft.payment || '',
+      date: draft.date || ''
+    };
+
+    trip.categories[cat].items.push(newItem);
+    ui.newItem[cat] = {};
+    scheduleSave();
+    render();
+  }
+  else if(action === 'bulk-add'){
+    const cat = el.dataset.cat;
+    const trip = state.trips.find(t=>t.id===state.currentTripId);
+    const text = ui.bulkDraft[cat] || '';
+    if(!text.trim()) return;
+
+    const lines = text.split('\n');
+    let currentDay = '';
+    let currentDate = '';
+
+    lines.forEach(line=>{
+      const raw = line.trim();
+      if(!raw) return;
+
+      if(cat === 'routePlanning'){
+        const dayHeader = matchDayHeader(raw);
+        if(dayHeader){
+          currentDay = dayHeader;
+          return;
+        }
+      }
+
+      if(cat === 'expenses'){
+        const dt = matchWholeDate(raw, trip);
+        if(dt){
+          currentDate = dt;
+          return;
+        }
+        const parsed = parseExpenseLine(raw, trip, currentDate);
+        if(parsed) trip.categories.expenses.items.push(parsed);
+        return;
+      }
+
+      trip.categories[cat].items.push({
+        id: uid(),
+        text: raw,
+        checked: false,
+        note: '',
+        link: '',
+        day: currentDay
+      });
+    });
+
+    ui.bulkDraft[cat] = '';
+    ui.bulkOpen.delete(cat);
     scheduleSave();
     render();
   }
 });
 
-function refreshMoneyDisplays(){
-  const trip = state.trips.find(t=>t.id===state.currentTripId);
-  if(!trip) return;
-  const totalsEl = document.querySelector('[data-role="totals"]');
-  if(totalsEl) totalsEl.innerHTML = renderExpenseTotalsInner(trip);
-  const summaryPanel = document.querySelector('.expense-summary[data-role="breakdown"]');
-  if(summaryPanel) summaryPanel.innerHTML = renderExpenseSummaryInner(trip);
-  const reconPanel = document.querySelector('.exchange-recon');
-  if(reconPanel) reconPanel.innerHTML = renderExchangeReconInner(trip);
-}
+/* ===================== 全域 Input 事件 handlers ===================== */
+app.addEventListener('input', (e)=>{
+  const target = e.target;
+  
+  // 新增行程的 draft 欄位
+  if(target.dataset.field === 'new-destination') ui.draft.destination = target.value;
+  if(target.dataset.field === 'new-start') ui.draft.start = target.value;
+  if(target.dataset.field === 'new-end') ui.draft.end = target.value;
 
-function handleFieldChange(e){
-  const el = e.target;
-
-  if(el.dataset.field === 'sync-code'){ if(ui.codeModal) ui.codeModal.value = el.value; return; }
-  if(el.dataset.field === 'new-destination'){ ui.draft.destination = el.value; return; }
-  if(el.dataset.field === 'new-start'){ ui.draft.start = el.value; return; }
-  if(el.dataset.field === 'new-end'){ ui.draft.end = el.value; return; }
-
-  if(el.dataset.bulkCat){ ui.bulkDraft[el.dataset.bulkCat] = el.value; return; }
-
-  if(el.dataset.newField){
-    const cat = el.dataset.cat;
-    ui.newItem[cat] = ui.newItem[cat] || {};
-    ui.newItem[cat][el.dataset.newField] = el.value;
-    return;
-  }
-
-  const tripFieldEl = el.closest('[data-action="update-trip-field"]');
-  if(tripFieldEl){
+  // 詳細頁頂端行程名稱與日期更新
+  if(target.dataset.action === 'update-trip-field'){
     const trip = state.trips.find(t=>t.id===state.currentTripId);
-    if(trip){ trip[tripFieldEl.dataset.field] = tripFieldEl.value; scheduleSave(); }
-    return;
+    if(trip){
+      trip[target.dataset.field] = target.value;
+      scheduleSave();
+    }
   }
 
-  const block = el.closest('.item-block');
-  if(block && el.dataset.field){
+  // 既有清單項目的修改
+  const itemBlock = target.closest('.item-block');
+  if(itemBlock){
+    const cat = itemBlock.dataset.cat;
+    const itemId = itemBlock.dataset.item;
+    const field = target.dataset.field;
     const trip = state.trips.find(t=>t.id===state.currentTripId);
-    const item = trip.categories[block.dataset.cat].items.find(i=>i.id===block.dataset.item);
-    item[el.dataset.field] = el.value;
-    scheduleSave();
-    const cat = block.dataset.cat;
-    const field = el.dataset.field;
-    if(cat === 'expenses' && ['amount','category','payment','currency'].includes(field)) refreshMoneyDisplays();
-    if(cat === 'exchange' && ['amount','currency'].includes(field)) refreshMoneyDisplays();
+    if(trip && trip.categories[cat]){
+      const item = trip.categories[cat].items.find(i=>i.id===itemId);
+      if(item && field){
+        item[field] = target.value;
+        scheduleSave();
+      }
+    }
   }
-}
-app.addEventListener('input', handleFieldChange);
-app.addEventListener('change', handleFieldChange);
 
-app.addEventListener('keydown', (e)=>{
-  if(e.key === 'Enter' && e.target.dataset && e.target.dataset.newField && e.target.tagName !== 'TEXTAREA'){
-    e.preventDefault();
-    const btn = e.target.closest('.add-item-row-stack, .add-item-row').querySelector('[data-action="add-item"]');
-    if(btn) btn.click();
+  // 新增項目的暫存值
+  if(target.dataset.newField){
+    const cat = target.dataset.cat;
+    const field = target.dataset.newField;
+    if(!ui.newItem[cat]) ui.newItem[cat] = {};
+    ui.newItem[cat][field] = target.value;
   }
-  if(e.key === 'Enter' && e.target.dataset && e.target.dataset.action === 'create-trip'){
-    e.target.click();
+
+  // 批次貼上暫存值
+  if(target.dataset.bulkCat){
+    const cat = target.dataset.bulkCat;
+    ui.bulkDraft[cat] = target.value;
+  }
+
+  // 同步代碼輸入
+  if(target.dataset.field === 'sync-code'){
+    if(ui.codeModal) ui.codeModal.value = target.value;
   }
 });
 
-/* ===================== 啟動 ===================== */
-(function(){
-  state.trips = loadTrips();
-  render();
-})();
+// 初始化第一次渲染
+render();
 </script>
 </body>
 </html>
