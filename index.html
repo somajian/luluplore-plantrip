@@ -4,6 +4,8 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>旅行規劃All in One</title>
+<!-- Supabase JS SDK CDN -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=IBM+Plex+Mono:wght@500;600&family=Noto+Sans+TC:wght@400;500;700&display=swap');
 
@@ -38,6 +40,42 @@ body{
 #app{max-width:1040px;margin:0 auto;padding:28px 20px 80px;}
 button{font-family:inherit;cursor:pointer;}
 input,textarea,select{font-family:inherit;}
+
+/* ---------- Auth & Sync Bar ---------- */
+.auth-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: var(--paper-deep);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 10px 16px;
+  margin-bottom: 20px;
+  font-size: 13px;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.auth-user-info { display: flex; align-items: center; gap: 8px; }
+.auth-avatar { width: 28px; height: 28px; border-radius: 50%; border: 1px solid var(--line); }
+.sync-indicator { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--ink-soft); }
+.sync-dot { width: 8px; height: 8px; border-radius: 50%; background: #ccc; }
+.sync-dot.synced { background: #27ae60; }
+.sync-dot.syncing { background: #f39c12; animation: pulse 1s infinite; }
+@keyframes pulse { 0% { opacity: 0.4; } 50% { opacity: 1; } 100% { opacity: 0.4; } }
+
+.btn-auth {
+  background: var(--white);
+  border: 1px solid var(--line);
+  color: var(--ink);
+  border-radius: 8px;
+  padding: 6px 12px;
+  font-size: 12.5px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.btn-auth:hover { border-color: var(--teal); color: var(--teal); }
 
 /* ---------- Header ---------- */
 .brand{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:6px;flex-wrap:wrap;gap:8px;}
@@ -276,14 +314,14 @@ input,textarea,select{font-family:inherit;}
 
 .footer-note{text-align:center;font-size:11.5px;color:var(--ink-soft);margin-top:40px;line-height:1.7;}
 
-/* ---------- Modal / Toast (取代原生 confirm/alert，因為在預覽環境裡常被瀏覽器擋掉) ---------- */
+/* ---------- Modal / Toast ---------- */
 .modal-overlay{
   position:fixed;inset:0;background:rgba(27,42,74,0.35);display:flex;align-items:center;justify-content:center;
   z-index:100;padding:20px;
 }
 .modal-box{
   background:var(--card);border:1px solid var(--line);border-radius:var(--radius);
-  padding:22px 22px 18px;max-width:340px;width:100%;box-shadow:0 12px 30px rgba(27,42,74,0.25);
+  padding:22px 22px 18px;max-width:380px;width:100%;box-shadow:0 12px 30px rgba(27,42,74,0.25);
 }
 .modal-msg{font-size:14px;color:var(--ink);line-height:1.6;margin:0 0 16px;white-space:pre-line;}
 .sync-code-box{
@@ -321,6 +359,14 @@ input,textarea,select{font-family:inherit;}
 <input type="file" id="import-input" accept="application/json" style="display:none;">
 
 <script>
+/* ===================== Supabase 設定與初始化 ===================== */
+const SUPABASE_URL = "https://jgftnhhddhsblkgsrfvd.supabase.co";
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpnZnRuaGhkZGhzYmxrZ3NyZnZkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODczMDAwNzksImV4cCI6MjEwMjg3NjA3OX0.eDtdPg2JGMP8HwKDEaeXCZqNUvBDdObe9IpWdaN6LlU";
+const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+let currentUser = null;
+let isSyncing = false;
+
 /* ===================== 資料設定 ===================== */
 const CATS = [
   {id:'flight', label:'機票', icon:'✈️', type:'checklist', hint:'例：台北→東京，10/5 早班機'},
@@ -338,8 +384,7 @@ const CATS = [
   {id:'expenses', label:'花費與記帳', icon:'💰', type:'expense', hint:'例：機場計程車'},
 ];
 const EXPENSE_CATS = ['吃','住','交通','購物','娛樂','景點門票','其他'];
-/* 付款方式改成自由輸入＋自動建議，因為每個人卡片名稱都不一樣。
-   「現金」這個字是換匯結餘計算的判斷依據，其餘輸入什麼都可以（自己的卡名）。 */
+
 function paymentSuggestions(){
   const set = new Set(['現金']);
   state.trips.forEach(t=>{
@@ -398,6 +443,8 @@ let ui = {
   confirm: null,
   toast: null,
   codeModal: null,
+  shareModal: false,
+  collaboratorEmail: ''
 };
 let saveTimer = null;
 
@@ -407,19 +454,160 @@ function loadTrips(){
   try{
     const raw = localStorage.getItem(STORAGE_KEY);
     if(raw) return JSON.parse(raw);
-  }catch(e){ /* 瀏覽器不允許使用儲存空間（例如無痕模式），或資料損壞 */ }
+  }catch(e){}
   return [];
 }
+
 function scheduleSave(){
   clearTimeout(saveTimer);
-  saveTimer = setTimeout(()=>{
-    try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(state.trips)); }
+  saveTimer = setTimeout(async ()=>{
+    try{ 
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(state.trips)); 
+      if(currentUser) {
+        await syncToSupabase();
+      }
+    }
     catch(e){
       console.error('儲存失敗', e);
       showToast('儲存失敗，可能是瀏覽器處於無痕模式或儲存空間已滿，建議立即匯出備份', true);
     }
-  }, 500);
+  }, 800);
 }
+
+/* ===================== Supabase 同步與 Auth 邏輯 ===================== */
+async function signInWithGoogle() {
+  await supabaseClient.auth.signInWithOAuth({
+    provider: 'google',
+    options: { redirectTo: window.location.origin }
+  });
+}
+
+async function signOut() {
+  await supabaseClient.auth.signOut();
+  currentUser = null;
+  render();
+  showToast('已安全登出');
+}
+
+async function syncToSupabase() {
+  if(!currentUser) return;
+  isSyncing = true;
+  renderAuthBar();
+
+  try {
+    for (const trip of state.trips) {
+      const { data, error } = await supabaseClient
+        .from('trips')
+        .upsert({
+          id: trip.id,
+          user_id: currentUser.id,
+          destination: trip.destination,
+          start_date: trip.startDate,
+          end_date: trip.endDate,
+          categories: trip.categories,
+          updated_at: new Date()
+        });
+      if (error) console.error("Cloud Sync Error:", error);
+    }
+  } catch(err) {
+    console.error("Cloud Sync failed:", err);
+  } finally {
+    isSyncing = false;
+    renderAuthBar();
+  }
+}
+
+async function syncFromSupabase() {
+  if(!currentUser) return;
+  isSyncing = true;
+  renderAuthBar();
+
+  try {
+    const { data: userTrips, error: err1 } = await supabaseClient
+      .from('trips')
+      .select('*')
+      .eq('user_id', currentUser.id);
+
+    const { data: collabData, error: err2 } = await supabaseClient
+      .from('trip_collaborators')
+      .select('trip_id')
+      .eq('email', currentUser.email);
+
+    let collabTrips = [];
+    if (collabData && collabData.length > 0) {
+      const tripIds = collabData.map(c => c.trip_id);
+      const { data: shared } = await supabaseClient
+        .from('trips')
+        .select('*')
+        .in('id', tripIds);
+      if (shared) collabTrips = shared;
+    }
+
+    const allRemote = [...(userTrips || []), ...collabTrips];
+    
+    if (allRemote.length > 0) {
+      const remoteFormatted = allRemote.map(t => ({
+        id: t.id,
+        destination: t.destination,
+        startDate: t.start_date || '',
+        endDate: t.end_date || '',
+        categories: t.categories || emptyCategories()
+      }));
+
+      const mergedMap = new Map();
+      state.trips.forEach(t => mergedMap.set(t.id, t));
+      remoteFormatted.forEach(t => mergedMap.set(t.id, t));
+
+      state.trips = Array.from(mergedMap.values());
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(state.trips));
+    } else if (state.trips.length > 0) {
+      await syncToSupabase();
+    }
+  } catch(e) {
+    console.error("Pull from cloud error:", e);
+  } finally {
+    isSyncing = false;
+    render();
+  }
+}
+
+/* 監聽 Auth 狀態 */
+supabaseClient.auth.onAuthStateChange(async (event, session) => {
+  if (session && session.user) {
+    currentUser = session.user;
+    
+    const urlParams = new URLSearchParams(window.location.search);
+    const sharedTripId = urlParams.get('trip_id');
+
+    if (sharedTripId) {
+      const { data: trip } = await supabaseClient
+        .from('trips')
+        .select('*')
+        .eq('id', sharedTripId)
+        .single();
+
+      if (trip) {
+        const formatted = {
+          id: trip.id,
+          destination: trip.destination,
+          startDate: trip.start_date || '',
+          endDate: trip.end_date || '',
+          categories: trip.categories || emptyCategories()
+        };
+        const exists = state.trips.some(t => t.id === formatted.id);
+        if (!exists) state.trips.push(formatted);
+        state.currentTripId = formatted.id;
+        state.view = 'trip';
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(state.trips));
+      }
+    }
+
+    await syncFromSupabase();
+  } else {
+    currentUser = null;
+    render();
+  }
+});
 
 /* ===================== 計算 ===================== */
 function catProgress(trip, cat){
@@ -483,8 +671,6 @@ function groupSum(items, field){
   return Object.entries(map).sort((a,b)=>b[1]-a[1]);
 }
 
-/* 解析一行自由格式的記帳文字，例如「8/17 大國藥妝 25000 JPY 富邦J卡」
-   順序大致是：日期 項目 金額 幣別 付款方式，抓不到的欄位留空。 */
 function matchWholeDate(line, trip){
   const s = line.trim();
   const full = s.match(/^(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})$/);
@@ -513,7 +699,6 @@ function parseExpenseLine(line, trip, inheritedDate){
   const raw = line.trim();
   if(!raw) return null;
 
-  // 用「：」或「:」把整行拆成「日期 類別 項目」跟「金額 幣別（付款方式）」兩半
   const iFull = raw.indexOf('：');
   const iHalf = raw.indexOf(':');
   const colonIdx = iFull===-1 ? iHalf : (iHalf===-1 ? iFull : Math.min(iFull, iHalf));
@@ -527,7 +712,6 @@ function parseExpenseLine(line, trip, inheritedDate){
   const leftPart = raw.slice(0, colonIdx).trim();
   let rightPart = raw.slice(colonIdx + 1).trim();
 
-  // ---- 左半：日期 類別 項目 ----
   const leftTokens = leftPart.split(/\s+/).filter(Boolean);
   const dateFull = leftTokens[0] && leftTokens[0].match(/^(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})$/);
   const dateShort = leftTokens[0] && leftTokens[0].match(/^(\d{1,2})[\/\-](\d{1,2})$/);
@@ -548,7 +732,6 @@ function parseExpenseLine(line, trip, inheritedDate){
   }
   item.text = leftTokens.join(' ');
 
-  // ---- 右半：金額 幣別（付款方式） ----
   const payMatch = rightPart.match(/[（(]([^）)]*)[）)]/);
   if(payMatch){
     item.payment = payMatch[1].trim();
@@ -573,7 +756,6 @@ function parseExpenseLine(line, trip, inheritedDate){
   return item;
 }
 
-/* 沒有用「：」分隔的舊格式，退回寬鬆解析（相容更早期直接空格分隔的寫法） */
 function parseExpenseLineLegacy(line, trip, inheritedDate){
   const tokens = line.trim().split(/\s+/).filter(Boolean);
   if(tokens.length === 0) return null;
@@ -595,7 +777,6 @@ function parseExpenseLineLegacy(line, trip, inheritedDate){
     tokens.shift();
   }
 
-  // 第一個字如果剛好是常見類別（吃／住／交通…），就當作類別
   if(tokens.length && EXPENSE_CATS.includes(tokens[0])){
     item.category = tokens.shift();
   }
@@ -622,11 +803,43 @@ function parseExpenseLineLegacy(line, trip, inheritedDate){
   if(!item.text && !item.amount) return null;
   return item;
 }
+
 function fmtDateRange(trip){
   if(!trip.startDate && !trip.endDate) return '尚未設定日期';
   const s = trip.startDate || '?';
   const e = trip.endDate || '?';
   return s === e ? s : (s + ' → ' + e);
+}
+
+/* ===================== Auth 元件 UI ===================== */
+function renderAuthBar() {
+  if (currentUser) {
+    const avatar = currentUser.user_metadata?.avatar_url || 'https://via.placeholder.com/28';
+    const email = currentUser.email || '已登入';
+    return `
+      <div class="auth-bar">
+        <div class="auth-user-info">
+          <img class="auth-avatar" src="${avatar}" alt="user">
+          <span>${escapeHtml(email)}</span>
+          <div class="sync-indicator">
+            <span class="sync-dot ${isSyncing ? 'syncing' : 'synced'}"></span>
+            ${isSyncing ? '雲端同步中...' : '雲端已同步'}
+          </div>
+        </div>
+        <button class="btn-auth" data-action="auth-logout">登出</button>
+      </div>`;
+  } else {
+    return `
+      <div class="auth-bar">
+        <div class="sync-indicator">
+          💡 目前為試用模式，資料僅存於本機 LocalStorage。登入後可跨裝置自動備份與分享協作。
+        </div>
+        <button class="btn-auth" data-action="auth-login">
+          <svg width="14" height="14" viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"/></svg>
+          Google 一鍵登入
+        </button>
+      </div>`;
+  }
 }
 
 /* ===================== 渲染：行程列表 ===================== */
@@ -662,6 +875,7 @@ function renderListView(){
     </div>`;
 
   return `
+    ${renderAuthBar()}
     <div class="brand">
       <h1><span class="stamp-icon">🛂</span>旅行規劃All in One</h1>
       <span class="made-by">Made By Luluplore</span>
@@ -676,11 +890,11 @@ function renderListView(){
     <div class="tagline-dash"></div>
     ${state.trips.length===0 ? '<p class="empty-hint">目前還沒有行程，從下面開始建立你的第一趟旅行吧！</p>' : ''}
     <div class="grid">${cards}${addCard}</div>
-    <p class="footer-note">資料存在「這個瀏覽器」裡，不需要登入。換裝置時，最快的方法是「產生同步代碼」複製後，到另一台裝置「貼上同步代碼」匯入；或用「⬇ 匯出備份」／「⬆ 匯入備份」搬檔案。</p>
+    <p class="footer-note">登入 Google 後，資料將會自動備份到雲端，跨手機與電腦同步。</p>
   `;
 }
 
-/* ===================== 花費統整／換匯結餘（內容片段，供整頁渲染與局部更新共用） ===================== */
+/* ===================== 花費統整／換匯結餘 ===================== */
 function renderExpenseSummaryInner(trip){
   const items = trip.categories.expenses.items;
   if(items.length===0) return '<div class="summary-row"><span>尚無資料</span><span>–</span></div>';
@@ -882,11 +1096,15 @@ function renderTripView(){
   const catsHtml = CATS.map(c=>renderCategoryCard(trip, c)).join('');
 
   return `
+    ${renderAuthBar()}
     <datalist id="currency-list">
       ${currencySuggestions().map(c=>`<option value="${escapeAttr(c)}">`).join('')}
     </datalist>
     <div class="trip-header">
-      <button class="trip-delete-lg" data-action="delete-trip" data-id="${trip.id}">刪除此行程</button>
+      <div style="position:absolute; top:18px; right:22px; display:flex; gap:10px;">
+        <button class="modal-btn" data-action="open-share-modal">🔗 分享／協作</button>
+        <button class="trip-delete-lg" data-action="delete-trip" data-id="${trip.id}">刪除此行程</button>
+      </div>
       <button class="back-btn" data-action="back">← 返回所有行程</button>
       <div class="th-row">
         <input class="trip-title-input" data-action="update-trip-field" data-field="destination" value="${escapeAttr(trip.destination)}" placeholder="目的地">
@@ -902,7 +1120,6 @@ function renderTripView(){
       </div>
     </div>
     <div class="cats-grid">${catsHtml}</div>
-    <p class="footer-note">資料存在「這個瀏覽器」裡，不需要登入。換裝置、換瀏覽器記得先回列表頁按「⬇ 匯出備份」，再到新裝置「⬆ 匯入備份」。</p>
   `;
 }
 
@@ -919,10 +1136,12 @@ function renderConfirmOverlay(){
       </div>
     </div>`;
 }
+
 function renderToast(){
   if(!ui.toast) return '';
   return `<div class="toast ${ui.toast.isError?'error':''}">${escapeHtml(ui.toast.msg)}</div>`;
 }
+
 function showToast(msg, isError){
   ui.toast = {msg, isError: !!isError};
   render();
@@ -948,6 +1167,30 @@ function renderCodeModal(){
     </div>`;
 }
 
+/* ===================== 渲染：分享 Modal ===================== */
+function renderShareModal(){
+  if(!ui.shareModal) return '';
+  const shareUrl = `${window.location.origin}?trip_id=${state.currentTripId}`;
+  return `
+    <div class="modal-overlay" data-action="close-share-modal">
+      <div class="modal-box" data-action="modal-noop">
+        <p class="modal-msg"><strong>🔗 專案分享與協作</strong></p>
+        <p style="font-size:12px; color:var(--ink-soft); margin-bottom:8px;">複製連結即可分享給夥伴檢視或編輯：</p>
+        <input readonly value="${shareUrl}" style="width:100%; padding:8px; border:1px solid var(--line); border-radius:6px; font-size:12px; margin-bottom:12px;">
+        <button class="modal-btn primary" style="width:100%; margin-bottom:16px;" data-action="copy-share-url" data-url="${shareUrl}">複製專屬分享連結</button>
+        
+        <p style="font-size:12px; color:var(--ink-soft); margin-bottom:6px;">新增協作者 Email：</p>
+        <div style="display:flex; gap:6px; margin-bottom:12px;">
+          <input id="collab-email-input" placeholder="partner@gmail.com" style="flex:1; padding:6px; border:1px solid var(--line); border-radius:6px; font-size:12px;">
+          <button class="modal-btn primary" data-action="add-collaborator">新增</button>
+        </div>
+        <div class="modal-btns">
+          <button class="modal-btn" data-action="close-share-modal">關閉</button>
+        </div>
+      </div>
+    </div>`;
+}
+
 function captureScrollPositions(){
   const map = {};
   document.querySelectorAll('.cat-body[data-cat-body]').forEach(el=>{
@@ -964,7 +1207,11 @@ function render(){
   const scrollMap = captureScrollPositions();
   const pageY = window.scrollY;
   document.getElementById('app').innerHTML =
-    (state.view==='list' ? renderListView() : renderTripView()) + renderConfirmOverlay() + renderCodeModal() + renderToast();
+    (state.view==='list' ? renderListView() : renderTripView()) + 
+    renderConfirmOverlay() + 
+    renderCodeModal() + 
+    renderShareModal() + 
+    renderToast();
   restoreScrollPositions(scrollMap);
   window.scrollTo(0, pageY);
 }
@@ -1155,12 +1402,49 @@ app.addEventListener('pointerdown', (e)=>{
   document.addEventListener('pointerup', onDragEnd);
 });
 
-app.addEventListener('click', (e)=>{
+app.addEventListener('click', async (e)=>{
   const el = e.target.closest('[data-action]');
   if(!el) return;
   const action = el.dataset.action;
 
-  if(action === 'open-trip'){
+  if(action === 'auth-login'){
+    signInWithGoogle();
+  }
+  else if(action === 'auth-logout'){
+    signOut();
+  }
+  else if(action === 'open-share-modal'){
+    ui.shareModal = true;
+    render();
+  }
+  else if(action === 'close-share-modal'){
+    ui.shareModal = false;
+    render();
+  }
+  else if(action === 'copy-share-url'){
+    const url = el.dataset.url;
+    await copyText(url);
+    showToast('專屬分享連結已複製！');
+  }
+  else if(action === 'add-collaborator'){
+    const input = document.getElementById('collab-email-input');
+    const email = input ? input.value.trim() : '';
+    if(!email) { showToast('請輸入 Email', true); return; }
+    
+    const { error } = await supabaseClient.from('trip_collaborators').insert({
+      trip_id: state.currentTripId,
+      email: email,
+      role: 'editor'
+    });
+
+    if(error) {
+      showToast('新增失敗：' + error.message, true);
+    } else {
+      showToast(`已成功將 ${email} 新增為協作者！`);
+      if(input) input.value = '';
+    }
+  }
+  else if(action === 'open-trip'){
     state.currentTripId = el.dataset.id;
     state.view = 'trip';
     ui.expanded = new Set();
@@ -1205,9 +1489,12 @@ app.addEventListener('click', (e)=>{
       message: '確定要刪除「' + (t.destination||'未命名行程') + '」這趟行程嗎？此動作無法復原。',
       choices: [
         {label:'取消'},
-        {label:'刪除', danger:true, onClick: ()=>{
+        {label:'刪除', danger:true, onClick: async ()=>{
           state.trips = state.trips.filter(x=>x.id!==id);
           scheduleSave();
+          if(currentUser) {
+            await supabaseClient.from('trips').delete().eq('id', id);
+          }
           if(state.currentTripId===id){ state.currentTripId=null; state.view='list'; }
         }},
       ],
@@ -1215,7 +1502,6 @@ app.addEventListener('click', (e)=>{
     render();
   }
   else if(action === 'modal-noop'){
-    /* 點擊對話框本體不做任何事，避免被外層的 confirm-cancel 一併觸發 */
   }
   else if(action === 'confirm-cancel'){
     ui.confirm = null;
@@ -1345,7 +1631,6 @@ app.addEventListener('click', (e)=>{
   }
 });
 
-/* 局部更新花費合計／統整／換匯結餘，避免整頁重繪打斷輸入焦點 */
 function refreshMoneyDisplays(){
   const trip = state.trips.find(t=>t.id===state.currentTripId);
   if(!trip) return;
@@ -1357,7 +1642,6 @@ function refreshMoneyDisplays(){
   if(reconPanel) reconPanel.innerHTML = renderExchangeReconInner(trip);
 }
 
-/* 輸入框處理：文字類欄位就地更新，不整頁重繪，避免打字時失焦 */
 function handleFieldChange(e){
   const el = e.target;
 
