@@ -80,7 +80,6 @@ input,textarea,select{font-family:inherit;}
 /* ---------- Header ---------- */
 .brand{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:6px;flex-wrap:wrap;gap:8px;}
 .brand h1{font-family:var(--serif-ui);font-size:30px;font-weight:700;margin:0;letter-spacing:-0.02em;}
-.brand .stamp-icon{display:inline-block;transform:rotate(-6deg);margin-right:6px;}
 .made-by{font-family:var(--mono);font-size:11px;color:var(--brass);letter-spacing:.03em;white-space:nowrap;}
 .brand-sub{font-size:13px;color:var(--ink-soft);margin:0 0 16px;}
 .toolbar{display:flex;gap:8px;margin-bottom:26px;flex-wrap:wrap;}
@@ -542,7 +541,7 @@ function scheduleSave(){
   }, 600);
 }
 
-/* ===================== Supabase 同步與 Realtime 邏輯 (修正版) ===================== */
+/* ===================== Supabase 同步與 Realtime 邏輯 ===================== */
 async function signInWithGoogle() {
   await supabaseClient.auth.signInWithOAuth({
     provider: 'google',
@@ -578,33 +577,35 @@ function subscribeRealtime() {
     .subscribe();
 }
 
-/* 【修正：新增/更新資料至 Supabase】 */
+/* 新增／更新資料至 Supabase (Cloud Sync) */
 async function syncToSupabase() {
-  if(!currentUser) return;
+  if (!currentUser) return;
   isSyncing = true;
   isRemoteUpdating = true;
   render();
 
   try {
-    for (const trip of state.trips) {
-      // 確保傳遞完整的結構與 updated_at 時間戳記
-      const { error } = await supabaseClient
+    if (state.trips.length > 0) {
+      // 構建批次 upsert 資料
+      const recordsToUpsert = state.trips.map(trip => ({
+        id: trip.id,
+        user_id: currentUser.id,
+        destination: trip.destination || '未命名行程',
+        start_date: trip.startDate || null,
+        end_date: trip.endDate || null,
+        categories: trip.categories || emptyCategories(),
+        updated_at: new Date().toISOString()
+      }));
+
+      const { data, error } = await supabaseClient
         .from('trips')
-        .upsert({
-          id: trip.id,
-          user_id: currentUser.id,
-          destination: trip.destination || '未命名行程',
-          start_date: trip.startDate || null,
-          end_date: trip.endDate || null,
-          categories: trip.categories || emptyCategories(),
-          updated_at: new Date().toISOString()
-        }, { onConflict: 'id' });
-        
+        .upsert(recordsToUpsert, { onConflict: 'id' });
+
       if (error) {
-        console.error("Cloud Upsert Error:", error);
+        console.error("Cloud Sync Upsert Error:", error);
       }
     }
-  } catch(err) {
+  } catch (err) {
     console.error("Cloud Sync failed:", err);
   } finally {
     isSyncing = false;
@@ -613,54 +614,61 @@ async function syncToSupabase() {
   }
 }
 
-/* 【修正：從 Supabase 讀取資料】 */
+/* 從 Supabase 讀取資料 (Cloud Pull) */
 async function syncFromSupabase(isRealtimeTrigger = false) {
-  if(!currentUser) return;
-  if(!isRealtimeTrigger) {
+  if (!currentUser) return;
+  if (!isRealtimeTrigger) {
     isSyncing = true;
     render();
   }
 
   try {
-    // 1. 取得自己建立的行程
-    const { data: userTrips, error: userTripsErr } = await supabaseClient
+    // 1. 讀取使用者建立的行程
+    const { data: userTrips, error: userError } = await supabaseClient
       .from('trips')
       .select('*')
       .eq('user_id', currentUser.id);
 
-    if (userTripsErr) throw userTripsErr;
+    if (userError) {
+      console.error("Fetch user trips error:", userError);
+    }
 
-    // 2. 取得被分享/協作的行程
-    const { data: collabData, error: collabErr } = await supabaseClient
+    // 2. 讀取作為協作者被分享的行程
+    const { data: collabData, error: collabError } = await supabaseClient
       .from('trip_collaborators')
       .select('trip_id')
       .eq('email', currentUser.email);
 
-    if (collabErr) console.warn("Fetch collaborators error:", collabErr);
+    if (collabError) {
+      console.error("Fetch collaborator info error:", collabError);
+    }
 
     let collabTrips = [];
     if (collabData && collabData.length > 0) {
       const tripIds = collabData.map(c => c.trip_id);
-      const { data: shared, error: sharedErr } = await supabaseClient
+      const { data: shared, error: sharedError } = await supabaseClient
         .from('trips')
         .select('*')
         .in('id', tripIds);
-      if (!sharedErr && shared) collabTrips = shared;
+      
+      if (!sharedError && shared) {
+        collabTrips = shared;
+      }
     }
 
-    // 3. 整合遠端資料
+    // 3. 整合雲端遠端資料
     const allRemote = [...(userTrips || []), ...collabTrips];
-    
+
     if (allRemote.length > 0) {
       const remoteFormatted = allRemote.map(t => ({
         id: t.id,
-        destination: t.destination || '未命名行程',
+        destination: t.destination || '',
         startDate: t.start_date || '',
         endDate: t.end_date || '',
         categories: t.categories || emptyCategories()
       }));
 
-      // 以 id 為 key 進行合併（避免覆蓋與重複）
+      // 以 Map 進行合併，遠端資料優先更新本地
       const mergedMap = new Map();
       state.trips.forEach(t => mergedMap.set(t.id, t));
       remoteFormatted.forEach(t => mergedMap.set(t.id, t));
@@ -990,7 +998,7 @@ function renderListView(){
   return `
     ${renderAuthBar()}
     <div class="brand">
-      <h1><span class="stamp-icon">Passport</span>旅行規劃All in One</h1>
+      <h1>旅行規劃All in One</h1>
       <span class="made-by">Made By Luluplore</span>
     </div>
     <p class="brand-sub">完整記錄每趟旅程，一目了然旅行的準備進度！</p>
