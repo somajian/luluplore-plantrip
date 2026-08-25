@@ -80,7 +80,6 @@ input,textarea,select{font-family:inherit;}
 /* ---------- Header ---------- */
 .brand{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:6px;flex-wrap:wrap;gap:8px;}
 .brand h1{font-family:var(--serif-ui);font-size:30px;font-weight:700;margin:0;letter-spacing:-0.02em;}
-.brand .stamp-icon{display:inline-block;transform:rotate(-6deg);margin-right:6px;}
 .made-by{font-family:var(--mono);font-size:11px;color:var(--brass);letter-spacing:.03em;white-space:nowrap;}
 .brand-sub{font-size:13px;color:var(--ink-soft);margin:0 0 16px;}
 .toolbar{display:flex;gap:8px;margin-bottom:26px;flex-wrap:wrap;}
@@ -500,7 +499,6 @@ function emptyCategories(){
   return o;
 }
 
-// 補齊與驗證分類結構，避免遠端舊資料/空資料導致前端報錯
 function ensureCategories(cats){
   const base = emptyCategories();
   if(!cats || typeof cats !== 'object') return base;
@@ -553,8 +551,6 @@ function saveToSupabase() {
 function scheduleSave(){
   clearTimeout(saveTimer);
 
-  // 任何目前行程的編輯，都更新該行程的最後修改時間。
-  // 這個時間會用來判斷「手機 vs 電腦」哪一份資料比較新。
   if(currentUser && state.currentTripId){
     const currentTrip = state.trips.find(t => t.id === state.currentTripId);
     if(currentTrip){
@@ -578,14 +574,6 @@ function scheduleSave(){
 }
 
 /* ===================== Supabase 同步與 Realtime 邏輯 ===================== */
-/*
- * 跨裝置同步的核心原則：
- * 1. Google 登入後，Supabase Auth 的 user.id 是跨裝置固定的使用者識別。
- * 2. trips.user_id 永遠使用 currentUser.id，而不是 Email、localStorage 或裝置 ID。
- * 3. 登入後先從雲端讀取，再把「這台裝置才有」的本地資料合併上傳。
- * 4. 每趟行程使用 updated_at 做最後修改時間，避免舊裝置資料把新資料覆蓋掉。
- */
-
 async function signInWithGoogle() {
   const redirectTo = window.location.origin + window.location.pathname;
   const { error } = await supabaseClient.auth.signInWithOAuth({
@@ -618,7 +606,6 @@ async function signOut() {
   showToast('已安全登出');
 }
 
-/* 訂閱 Realtime 頻道（雙端同步核心） */
 function subscribeRealtime() {
   if (!currentUser) return;
 
@@ -652,7 +639,6 @@ function subscribeRealtime() {
     });
 }
 
-/* 將指定行程推送到 Supabase */
 async function syncToSupabase(tripsToSave = state.trips) {
   if (!currentUser || !Array.isArray(tripsToSave)) return false;
 
@@ -664,7 +650,6 @@ async function syncToSupabase(tripsToSave = state.trips) {
     const now = new Date().toISOString();
 
     const payload = tripsToSave.map(trip => {
-      // 新建立但尚未有 updated_at 的行程，在第一次雲端同步時補上時間
       if (!trip.updated_at) trip.updated_at = now;
 
       return {
@@ -704,18 +689,10 @@ async function syncToSupabase(tripsToSave = state.trips) {
   }
 }
 
-/* 從 Supabase 載入資料 */
 async function loadFromSupabase() {
   return syncFromSupabase(false);
 }
 
-/*
- * 從雲端同步資料。
- * 這裡特別處理「第一次在新裝置登入」：
- * - 雲端有資料 → 優先保留雲端較新的版本，同時把本機只有的行程上傳。
- * - 雲端沒有資料 → 把本機已有行程上傳。
- * - 雲端有、本機沒有 → 直接下載到本機。
- */
 async function syncFromSupabase(isRealtimeTrigger = false) {
   if (!currentUser) return;
 
@@ -725,7 +702,6 @@ async function syncFromSupabase(isRealtimeTrigger = false) {
   }
 
   try {
-    // 先確認目前瀏覽器真的拿到登入 session
     const { data: sessionData, error: sessionError } = await supabaseClient.auth.getSession();
     if (sessionError) throw sessionError;
 
@@ -737,7 +713,6 @@ async function syncFromSupabase(isRealtimeTrigger = false) {
 
     currentUser = sessionUser;
 
-    // 1. 取得目前 Google 帳號自己建立的所有行程
     const { data: userTrips, error: userTripsErr } = await supabaseClient
       .from('trips')
       .select('*')
@@ -745,14 +720,12 @@ async function syncFromSupabase(isRealtimeTrigger = false) {
 
     if (userTripsErr) throw userTripsErr;
 
-    // 2. 取得被分享/協作的行程
     const { data: collabData, error: collabErr } = await supabaseClient
       .from('trip_collaborators')
       .select('trip_id')
       .eq('email', (currentUser.email || '').toLowerCase());
 
     if (collabErr) {
-      // 協作功能失敗不應該阻斷「自己的跨裝置同步」
       console.warn('Fetch collaborators error:', collabErr);
     }
 
@@ -790,10 +763,6 @@ async function syncFromSupabase(isRealtimeTrigger = false) {
       updated_at: t.updated_at || null
     }));
 
-    /*
-     * 只對「自己的行程」做跨裝置雙向合併。
-     * shared trips 則直接加入，不拿它們覆蓋自己的同 ID 行程。
-     */
     const localMap = new Map(
       (state.trips || []).map(t => [t.id, t])
     );
@@ -804,12 +773,10 @@ async function syncFromSupabase(isRealtimeTrigger = false) {
 
     const mergedMap = new Map();
 
-    // A. 先處理雲端自己的行程
     remoteOwned.forEach(remoteTrip => {
       const localTrip = localMap.get(remoteTrip.id);
 
       if (!localTrip) {
-        // 本機沒有 → 從雲端下載
         mergedMap.set(remoteTrip.id, remoteTrip);
         return;
       }
@@ -822,8 +789,6 @@ async function syncFromSupabase(isRealtimeTrigger = false) {
         ? new Date(remoteTrip.updated_at).getTime()
         : 0;
 
-      // 雲端較新或時間相同 → 以雲端為準
-      // 本機較新 → 保留本機，稍後上傳
       if (remoteTime >= localTime) {
         mergedMap.set(remoteTrip.id, remoteTrip);
       } else {
@@ -831,7 +796,6 @@ async function syncFromSupabase(isRealtimeTrigger = false) {
       }
     });
 
-    // B. 本機有、雲端沒有 → 視為本機尚未同步的新資料
     const localOnlyTrips = [];
     localMap.forEach((localTrip, id) => {
       if (!remoteOwnedMap.has(id)) {
@@ -843,7 +807,6 @@ async function syncFromSupabase(isRealtimeTrigger = false) {
       }
     });
 
-    // C. 把雲端 shared trips 加入
     remoteShared.forEach(sharedTrip => {
       if (!mergedMap.has(sharedTrip.id)) {
         mergedMap.set(sharedTrip.id, sharedTrip);
@@ -852,7 +815,6 @@ async function syncFromSupabase(isRealtimeTrigger = false) {
 
     state.trips = Array.from(mergedMap.values());
 
-    // D. 找出本機比雲端新的自己的行程並上傳
     const tripsNeedingUpload = [];
 
     remoteOwned.forEach(remoteTrip => {
@@ -876,7 +838,6 @@ async function syncFromSupabase(isRealtimeTrigger = false) {
 
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state.trips));
 
-    // E. 將本機新增／較新的資料送到雲端
     if (tripsNeedingUpload.length > 0) {
       await syncToSupabase(tripsNeedingUpload);
     }
@@ -892,13 +853,9 @@ async function syncFromSupabase(isRealtimeTrigger = false) {
 
 /* 監聽 Auth 狀態 */
 supabaseClient.auth.onAuthStateChange((event, session) => {
-  // Supabase OAuth 登入完成、重新整理頁面、token refresh
-  // 都會從這裡取得同一個 Google 帳號的 Supabase user.id。
   if (session && session.user) {
     currentUser = session.user;
 
-    // 不要在 auth callback 裡直接 await，避免阻塞 Supabase Auth 內部流程。
-    // 排到下一個 task 後再進行資料同步。
     setTimeout(async () => {
       try {
         const urlParams = new URLSearchParams(window.location.search);
@@ -1225,7 +1182,7 @@ function renderListView(){
   return `
     ${renderAuthBar()}
     <div class="brand">
-      <h1><span class="stamp-icon">Passport</span>旅行規劃All in One</h1>
+      <h1>旅行規劃All in One</h1>
       <span class="made-by">Made By Luluplore</span>
     </div>
     <p class="brand-sub">完整記錄每趟旅程，一目了然旅行的準備進度！</p>
@@ -1498,7 +1455,7 @@ function showToast(msg, isError){
 /* ===================== 渲染：分享 Modal ===================== */
 function renderShareModal(){
   if(!ui.shareModal) return '';
-  const shareUrl = `${window.location.origin}?trip_id=${state.currentTripId}`;
+  const shareUrl = `${window.location.origin}${window.location.pathname}?trip_id=${state.currentTripId}`;
   return `
     <div class="modal-overlay" data-action="close-share-modal">
       <div class="modal-box" data-action="modal-noop">
@@ -1678,6 +1635,50 @@ app.addEventListener('pointerdown', (e)=>{
   document.addEventListener('pointerup', onDragEnd);
 });
 
+/* 動態表單與輸入框綁定 */
+app.addEventListener('input', (e)=>{
+  const field = e.target.dataset.field;
+  const newField = e.target.dataset.newField;
+  const cat = e.target.dataset.cat;
+  const bulkCat = e.target.dataset.bulkCat;
+
+  if (field === 'new-destination') ui.draft.destination = e.target.value;
+  if (field === 'new-start') ui.draft.start = e.target.value;
+  if (field === 'new-end') ui.draft.end = e.target.value;
+
+  if (bulkCat) {
+    ui.bulkDraft[bulkCat] = e.target.value;
+  }
+
+  if (newField && cat) {
+    if (!ui.newItem[cat]) ui.newItem[cat] = {};
+    ui.newItem[cat][newField] = e.target.value;
+  }
+
+  const trip = state.trips.find(t => t.id === state.currentTripId);
+  if (!trip) return;
+
+  const action = e.target.dataset.action;
+  if (action === 'update-trip-field') {
+    const f = e.target.dataset.field;
+    if (f) {
+      trip[f] = e.target.value;
+      scheduleSave();
+    }
+  }
+
+  const itemBlock = e.target.closest('.item-block');
+  if (itemBlock && field) {
+    const itemCat = itemBlock.dataset.cat;
+    const itemId = itemBlock.dataset.item;
+    const item = trip.categories[itemCat]?.items.find(i => i.id === itemId);
+    if (item) {
+      item[field] = e.target.value;
+      scheduleSave();
+    }
+  }
+});
+
 app.addEventListener('click', async (e)=>{
   const el = e.target.closest('[data-action]');
   if(!el) return;
@@ -1813,6 +1814,38 @@ app.addEventListener('click', async (e)=>{
     if(ui.summaryOpen.has(cat)) ui.summaryOpen.delete(cat); else ui.summaryOpen.add(cat);
     render();
   }
+  else if(action === 'add-item'){
+    const trip = state.trips.find(t=>t.id===state.currentTripId);
+    const cat = el.dataset.cat;
+    const draft = ui.newItem[cat] || {};
+    if(!draft.text && !draft.amount) return;
+
+    const newItemObj = {
+      id: uid(),
+      text: draft.text || '',
+      checked: false,
+      note: '',
+      link: '',
+      day: draft.day || '',
+      amount: draft.amount || '',
+      currency: draft.currency || '',
+      category: draft.category || '',
+      payment: draft.payment || '',
+      date: draft.date || ''
+    };
+
+    trip.categories[cat].items.push(newItemObj);
+    ui.newItem[cat] = {};
+    scheduleSave();
+    render();
+  }
+  else if(action === 'delete-item'){
+    const trip = state.trips.find(t=>t.id===state.currentTripId);
+    const cat = el.dataset.cat, id = el.dataset.item;
+    trip.categories[cat].items = trip.categories[cat].items.filter(i=>i.id!==id);
+    scheduleSave();
+    render();
+  }
   else if(action === 'bulk-add'){
     const trip = state.trips.find(t=>t.id===state.currentTripId);
     const cat = el.dataset.cat;
@@ -1827,133 +1860,35 @@ app.addEventListener('click', async (e)=>{
         const item = parseExpenseLine(line, trip, currentDate);
         if(item){ trip.categories.expenses.items.push(item); parsedCount++; }
       });
-      showToast(`已新增 ${parsedCount} 筆花費，記得檢查一下有沒有拆錯的欄位`);
+      showToast(`已新增 ${parsedCount} 筆花費`);
     } else if(cat === 'routePlanning'){
       let currentDay = '';
       lines.forEach(line=>{
         const headerDay = matchDayHeader(line);
         if(headerDay){ currentDay = headerDay; return; }
-        trip.categories.routePlanning.items.push({ id: uid(), text: line, checked:false, note:'', link:'', day: currentDay });
+        trip.categories.routePlanning.items.push({
+          id: uid(), text: line, checked: false, note: '', link: '', day: currentDay
+        });
       });
+      showToast(`已新增 ${lines.length} 筆行程規劃`);
     } else {
-      lines.forEach(text=>{
-        const item = { id: uid(), text, checked:false, note:'', link:'' };
-        if(cat === 'exchange') item.amount = '';
-        trip.categories[cat].items.push(item);
+      lines.forEach(line=>{
+        trip.categories[cat].items.push({
+          id: uid(), text: line, checked: false, note: '', link: ''
+        });
       });
+      showToast(`已新增 ${lines.length} 筆項目`);
     }
     ui.bulkDraft[cat] = '';
     ui.bulkOpen.delete(cat);
     scheduleSave();
     render();
   }
-  else if(action === 'delete-item'){
-    const trip = state.trips.find(t=>t.id===state.currentTripId);
-    const cat = el.dataset.cat, id = el.dataset.item;
-    trip.categories[cat].items = trip.categories[cat].items.filter(i=>i.id!==id);
-    scheduleSave();
-    render();
-  }
-  else if(action === 'add-item'){
-    const trip = state.trips.find(t=>t.id===state.currentTripId);
-    const cat = el.dataset.cat;
-    const draft = ui.newItem[cat] || {};
-    const hasText = draft.text && draft.text.trim();
-    if(cat === 'expenses' || cat === 'exchange'){
-      if(!hasText && !draft.amount) return;
-    } else if(!hasText){
-      return;
-    }
-    const item = { id: uid(), text: (draft.text||'').trim(), checked:false, note:'', link:'' };
-    if(cat === 'routePlanning') item.day = draft.day || '';
-    if(cat === 'exchange') { item.amount = draft.amount || ''; item.currency = draft.currency || ''; }
-    if(cat === 'expenses'){
-      item.amount = draft.amount || '';
-      item.category = draft.category || '';
-      item.payment = draft.payment || '';
-      item.currency = draft.currency || '';
-      item.date = draft.date || '';
-    }
-    trip.categories[cat].items.push(item);
-    if(cat === 'expenses'){
-      ui.newItem[cat] = { category: draft.category||'', payment: draft.payment||'', currency: draft.currency||'' };
-    } else if(cat === 'exchange'){
-      ui.newItem[cat] = { currency: draft.currency||'' };
-    } else if(cat === 'routePlanning'){
-      ui.newItem[cat] = { day: draft.day||'' };
-    } else {
-      ui.newItem[cat] = {};
-    }
-    scheduleSave();
-    render();
-  }
 });
 
-function refreshMoneyDisplays(){
-  const trip = state.trips.find(t=>t.id===state.currentTripId);
-  if(!trip) return;
-  const totalsEl = document.querySelector('[data-role="totals"]');
-  if(totalsEl) totalsEl.innerHTML = renderExpenseTotalsInner(trip);
-  const summaryPanel = document.querySelector('.expense-summary[data-role="breakdown"]');
-  if(summaryPanel) summaryPanel.innerHTML = renderExpenseSummaryInner(trip);
-  const reconPanel = document.querySelector('.exchange-recon');
-  if(reconPanel) reconPanel.innerHTML = renderExchangeReconInner(trip);
-}
-
-function handleFieldChange(e){
-  const el = e.target;
-
-  if(el.dataset.field === 'new-destination'){ ui.draft.destination = el.value; return; }
-  if(el.dataset.field === 'new-start'){ ui.draft.start = el.value; return; }
-  if(el.dataset.field === 'new-end'){ ui.draft.end = el.value; return; }
-
-  if(el.dataset.bulkCat){ ui.bulkDraft[el.dataset.bulkCat] = el.value; return; }
-
-  if(el.dataset.newField){
-    const cat = el.dataset.cat;
-    ui.newItem[cat] = ui.newItem[cat] || {};
-    ui.newItem[cat][el.dataset.newField] = el.value;
-    return;
-  }
-
-  const tripFieldEl = el.closest('[data-action="update-trip-field"]');
-  if(tripFieldEl){
-    const trip = state.trips.find(t=>t.id===state.currentTripId);
-    if(trip){ trip[tripFieldEl.dataset.field] = tripFieldEl.value; scheduleSave(); }
-    return;
-  }
-
-  const block = el.closest('.item-block');
-  if(block && el.dataset.field){
-    const trip = state.trips.find(t=>t.id===state.currentTripId);
-    const item = trip.categories[block.dataset.cat].items.find(i=>i.id===block.dataset.item);
-    item[el.dataset.field] = el.value;
-    scheduleSave();
-    const cat = block.dataset.cat;
-    const field = el.dataset.field;
-    if(cat === 'expenses' && ['amount','category','payment','currency'].includes(field)) refreshMoneyDisplays();
-    if(cat === 'exchange' && ['amount','currency'].includes(field)) refreshMoneyDisplays();
-  }
-}
-app.addEventListener('input', handleFieldChange);
-app.addEventListener('change', handleFieldChange);
-
-app.addEventListener('keydown', (e)=>{
-  if(e.key === 'Enter' && e.target.dataset && e.target.dataset.newField && e.target.tagName !== 'TEXTAREA'){
-    e.preventDefault();
-    const btn = e.target.closest('.add-item-row-stack, .add-item-row').querySelector('[data-action="add-item"]');
-    if(btn) btn.click();
-  }
-  if(e.key === 'Enter' && e.target.dataset && e.target.dataset.action === 'create-trip'){
-    e.target.click();
-  }
-});
-
-/* ===================== 啟動 ===================== */
-(function(){
-  state.trips = loadTrips();
-  render();
-})();
+/* 初始化載入 */
+state.trips = loadTrips();
+render();
 </script>
 </body>
 </html>
