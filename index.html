@@ -552,9 +552,20 @@ function saveToSupabase() {
 
 function scheduleSave(){
   clearTimeout(saveTimer);
+
+  // 任何目前行程的編輯，都更新該行程的最後修改時間。
+  // 這個時間會用來判斷「手機 vs 電腦」哪一份資料比較新。
+  if(currentUser && state.currentTripId){
+    const currentTrip = state.trips.find(t => t.id === state.currentTripId);
+    if(currentTrip){
+      currentTrip.updated_at = new Date().toISOString();
+    }
+  }
+
   saveTimer = setTimeout(async ()=>{
-    try{ 
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(state.trips)); 
+    try{
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(state.trips));
+
       if(currentUser) {
         await saveToSupabase();
       }
@@ -567,90 +578,166 @@ function scheduleSave(){
 }
 
 /* ===================== Supabase 同步與 Realtime 邏輯 ===================== */
+/*
+ * 跨裝置同步的核心原則：
+ * 1. Google 登入後，Supabase Auth 的 user.id 是跨裝置固定的使用者識別。
+ * 2. trips.user_id 永遠使用 currentUser.id，而不是 Email、localStorage 或裝置 ID。
+ * 3. 登入後先從雲端讀取，再把「這台裝置才有」的本地資料合併上傳。
+ * 4. 每趟行程使用 updated_at 做最後修改時間，避免舊裝置資料把新資料覆蓋掉。
+ */
+
 async function signInWithGoogle() {
-  await supabaseClient.auth.signInWithOAuth({
+  const redirectTo = window.location.origin + window.location.pathname;
+  const { error } = await supabaseClient.auth.signInWithOAuth({
     provider: 'google',
-    options: { redirectTo: window.location.origin }
+    options: { redirectTo }
   });
+
+  if (error) {
+    console.error('Google Login Error:', error);
+    showToast('Google 登入失敗：' + error.message, true);
+  }
 }
 
 async function signOut() {
   if (realtimeChannel) {
-    supabaseClient.removeChannel(realtimeChannel);
+    await supabaseClient.removeChannel(realtimeChannel);
     realtimeChannel = null;
   }
-  await supabaseClient.auth.signOut();
+
+  const { error } = await supabaseClient.auth.signOut();
+  if (error) {
+    console.error('Sign out error:', error);
+    showToast('登出失敗：' + error.message, true);
+    return;
+  }
+
   currentUser = null;
+  isSyncing = false;
   render();
   showToast('已安全登出');
 }
 
 /* 訂閱 Realtime 頻道（雙端同步核心） */
 function subscribeRealtime() {
-  if (!currentUser || realtimeChannel) return;
+  if (!currentUser) return;
+
+  if (realtimeChannel) {
+    supabaseClient.removeChannel(realtimeChannel);
+    realtimeChannel = null;
+  }
 
   realtimeChannel = supabaseClient
-    .channel('realtime_trips_changes')
-    .on('postgres_changes', { event: '*', schema: 'public', table: 'trips' }, async (payload) => {
-      if (isRemoteUpdating) return; 
-      await syncFromSupabase(true);
-    })
-    .on('postgres_changes', { event: '*', schema: 'public', table: 'trip_collaborators' }, async (payload) => {
-      if (isRemoteUpdating) return;
-      await syncFromSupabase(true);
-    })
-    .subscribe();
+    .channel('realtime_trips_changes_' + currentUser.id)
+    .on(
+      'postgres_changes',
+      { event: '*', schema: 'public', table: 'trips', filter: `user_id=eq.${currentUser.id}` },
+      async () => {
+        if (isRemoteUpdating) return;
+        await syncFromSupabase(true);
+      }
+    )
+    .on(
+      'postgres_changes',
+      { event: '*', schema: 'public', table: 'trip_collaborators' },
+      async () => {
+        if (isRemoteUpdating) return;
+        await syncFromSupabase(true);
+      }
+    )
+    .subscribe((status) => {
+      if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+        console.warn('Realtime channel status:', status);
+      }
+    });
 }
 
-/* 上傳/推送到 Supabase */
-async function syncToSupabase() {
-  if(!currentUser) return;
+/* 將指定行程推送到 Supabase */
+async function syncToSupabase(tripsToSave = state.trips) {
+  if (!currentUser || !Array.isArray(tripsToSave)) return false;
+
   isSyncing = true;
   isRemoteUpdating = true;
   render();
 
   try {
-    for (const trip of state.trips) {
-      const { error } = await supabaseClient
-        .from('trips')
-        .upsert({
-          id: trip.id,
-          user_id: currentUser.id,
-          destination: trip.destination || '未命名行程',
-          start_date: trip.startDate || null,
-          end_date: trip.endDate || null,
-          categories: trip.categories || emptyCategories(),
-          updated_at: new Date().toISOString()
-        }, { onConflict: 'id' });
-        
-      if (error) {
-        console.error("Cloud Upsert Error:", error);
-      }
+    const now = new Date().toISOString();
+
+    const payload = tripsToSave.map(trip => {
+      // 新建立但尚未有 updated_at 的行程，在第一次雲端同步時補上時間
+      if (!trip.updated_at) trip.updated_at = now;
+
+      return {
+        id: trip.id,
+        user_id: currentUser.id,
+        destination: trip.destination || '未命名行程',
+        start_date: trip.startDate || null,
+        end_date: trip.endDate || null,
+        categories: trip.categories || emptyCategories(),
+        updated_at: trip.updated_at
+      };
+    });
+
+    if (payload.length === 0) return true;
+
+    const { error } = await supabaseClient
+      .from('trips')
+      .upsert(payload, { onConflict: 'id' });
+
+    if (error) {
+      console.error('Cloud Upsert Error:', error);
+      showToast('雲端同步失敗：' + error.message, true);
+      return false;
     }
-  } catch(err) {
-    console.error("Cloud Sync failed:", err);
+
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(state.trips));
+    return true;
+
+  } catch (err) {
+    console.error('Cloud Sync failed:', err);
+    showToast('雲端同步失敗，請稍後再試', true);
+    return false;
   } finally {
     isSyncing = false;
-    setTimeout(() => { isRemoteUpdating = false; }, 1000);
+    setTimeout(() => { isRemoteUpdating = false; }, 500);
     render();
   }
 }
 
-/* 從 Supabase 載入資料 (別名 alias: loadFromSupabase) */
+/* 從 Supabase 載入資料 */
 async function loadFromSupabase() {
-  return syncFromSupabase();
+  return syncFromSupabase(false);
 }
 
-/* 從 Supabase 拉取與合併資料 */
+/*
+ * 從雲端同步資料。
+ * 這裡特別處理「第一次在新裝置登入」：
+ * - 雲端有資料 → 優先保留雲端較新的版本，同時把本機只有的行程上傳。
+ * - 雲端沒有資料 → 把本機已有行程上傳。
+ * - 雲端有、本機沒有 → 直接下載到本機。
+ */
 async function syncFromSupabase(isRealtimeTrigger = false) {
-  if(!currentUser) return;
-  if(!isRealtimeTrigger) {
+  if (!currentUser) return;
+
+  if (!isRealtimeTrigger) {
     isSyncing = true;
     render();
   }
 
   try {
-    // 1. 取得自己建立的行程
+    // 先確認目前瀏覽器真的拿到登入 session
+    const { data: sessionData, error: sessionError } = await supabaseClient.auth.getSession();
+    if (sessionError) throw sessionError;
+
+    const sessionUser = sessionData?.session?.user;
+    if (!sessionUser) {
+      currentUser = null;
+      return;
+    }
+
+    currentUser = sessionUser;
+
+    // 1. 取得目前 Google 帳號自己建立的所有行程
     const { data: userTrips, error: userTripsErr } = await supabaseClient
       .from('trips')
       .select('*')
@@ -662,56 +749,141 @@ async function syncFromSupabase(isRealtimeTrigger = false) {
     const { data: collabData, error: collabErr } = await supabaseClient
       .from('trip_collaborators')
       .select('trip_id')
-      .eq('email', currentUser.email);
+      .eq('email', (currentUser.email || '').toLowerCase());
 
-    if (collabErr) console.warn("Fetch collaborators error:", collabErr);
+    if (collabErr) {
+      // 協作功能失敗不應該阻斷「自己的跨裝置同步」
+      console.warn('Fetch collaborators error:', collabErr);
+    }
 
     let collabTrips = [];
     if (collabData && collabData.length > 0) {
       const tripIds = collabData.map(c => c.trip_id);
+
       const { data: shared, error: sharedErr } = await supabaseClient
         .from('trips')
         .select('*')
         .in('id', tripIds);
-      if (!sharedErr && shared) collabTrips = shared;
+
+      if (!sharedErr && shared) {
+        collabTrips = shared;
+      } else if (sharedErr) {
+        console.warn('Fetch shared trips error:', sharedErr);
+      }
     }
 
-    // 3. 整合與格式化遠端資料
-    const allRemote = [...(userTrips || []), ...collabTrips];
-    
-    if (allRemote.length > 0) {
-      const remoteFormatted = allRemote.map(t => ({
-        id: t.id,
-        destination: t.destination || '未命名行程',
-        startDate: t.start_date || '',
-        endDate: t.end_date || '',
-        categories: ensureCategories(t.categories),
-        updated_at: t.updated_at || null
-      }));
+    const remoteOwned = (userTrips || []).map(t => ({
+      id: t.id,
+      destination: t.destination || '未命名行程',
+      startDate: t.start_date || '',
+      endDate: t.end_date || '',
+      categories: ensureCategories(t.categories),
+      updated_at: t.updated_at || null
+    }));
 
-      // 以 ID 進行合併
-      const mergedMap = new Map();
-      state.trips.forEach(t => mergedMap.set(t.id, t));
-      
-      remoteFormatted.forEach(rt => {
-        if (!mergedMap.has(rt.id)) {
-          mergedMap.set(rt.id, rt);
-        } else {
-          const local = mergedMap.get(rt.id);
-          if (!local.updated_at || (rt.updated_at && new Date(rt.updated_at) >= new Date(local.updated_at))) {
-            mergedMap.set(rt.id, rt);
-          }
+    const remoteShared = collabTrips.map(t => ({
+      id: t.id,
+      destination: t.destination || '未命名行程',
+      startDate: t.start_date || '',
+      endDate: t.end_date || '',
+      categories: ensureCategories(t.categories),
+      updated_at: t.updated_at || null
+    }));
+
+    /*
+     * 只對「自己的行程」做跨裝置雙向合併。
+     * shared trips 則直接加入，不拿它們覆蓋自己的同 ID 行程。
+     */
+    const localMap = new Map(
+      (state.trips || []).map(t => [t.id, t])
+    );
+
+    const remoteOwnedMap = new Map(
+      remoteOwned.map(t => [t.id, t])
+    );
+
+    const mergedMap = new Map();
+
+    // A. 先處理雲端自己的行程
+    remoteOwned.forEach(remoteTrip => {
+      const localTrip = localMap.get(remoteTrip.id);
+
+      if (!localTrip) {
+        // 本機沒有 → 從雲端下載
+        mergedMap.set(remoteTrip.id, remoteTrip);
+        return;
+      }
+
+      const localTime = localTrip.updated_at
+        ? new Date(localTrip.updated_at).getTime()
+        : 0;
+
+      const remoteTime = remoteTrip.updated_at
+        ? new Date(remoteTrip.updated_at).getTime()
+        : 0;
+
+      // 雲端較新或時間相同 → 以雲端為準
+      // 本機較新 → 保留本機，稍後上傳
+      if (remoteTime >= localTime) {
+        mergedMap.set(remoteTrip.id, remoteTrip);
+      } else {
+        mergedMap.set(remoteTrip.id, localTrip);
+      }
+    });
+
+    // B. 本機有、雲端沒有 → 視為本機尚未同步的新資料
+    const localOnlyTrips = [];
+    localMap.forEach((localTrip, id) => {
+      if (!remoteOwnedMap.has(id)) {
+        if (!localTrip.updated_at) {
+          localTrip.updated_at = new Date().toISOString();
         }
-      });
+        mergedMap.set(id, localTrip);
+        localOnlyTrips.push(localTrip);
+      }
+    });
 
-      state.trips = Array.from(mergedMap.values());
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(state.trips));
-    } else if (state.trips.length > 0 && !isRealtimeTrigger) {
-      // 雲端尚無資料，把本地行程推上去
-      await syncToSupabase();
+    // C. 把雲端 shared trips 加入
+    remoteShared.forEach(sharedTrip => {
+      if (!mergedMap.has(sharedTrip.id)) {
+        mergedMap.set(sharedTrip.id, sharedTrip);
+      }
+    });
+
+    state.trips = Array.from(mergedMap.values());
+
+    // D. 找出本機比雲端新的自己的行程並上傳
+    const tripsNeedingUpload = [];
+
+    remoteOwned.forEach(remoteTrip => {
+      const localTrip = localMap.get(remoteTrip.id);
+      if (!localTrip) return;
+
+      const localTime = localTrip.updated_at
+        ? new Date(localTrip.updated_at).getTime()
+        : 0;
+
+      const remoteTime = remoteTrip.updated_at
+        ? new Date(remoteTrip.updated_at).getTime()
+        : 0;
+
+      if (localTime > remoteTime) {
+        tripsNeedingUpload.push(localTrip);
+      }
+    });
+
+    tripsNeedingUpload.push(...localOnlyTrips);
+
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(state.trips));
+
+    // E. 將本機新增／較新的資料送到雲端
+    if (tripsNeedingUpload.length > 0) {
+      await syncToSupabase(tripsNeedingUpload);
     }
-  } catch(e) {
-    console.error("Pull from cloud error:", e);
+
+  } catch (e) {
+    console.error('Pull from cloud error:', e);
+    showToast('無法讀取雲端資料：' + (e.message || '未知錯誤'), true);
   } finally {
     isSyncing = false;
     render();
@@ -719,45 +891,62 @@ async function syncFromSupabase(isRealtimeTrigger = false) {
 }
 
 /* 監聽 Auth 狀態 */
-supabaseClient.auth.onAuthStateChange(async (event, session) => {
+supabaseClient.auth.onAuthStateChange((event, session) => {
+  // Supabase OAuth 登入完成、重新整理頁面、token refresh
+  // 都會從這裡取得同一個 Google 帳號的 Supabase user.id。
   if (session && session.user) {
     currentUser = session.user;
-    
-    const urlParams = new URLSearchParams(window.location.search);
-    const sharedTripId = urlParams.get('trip_id');
 
-    if (sharedTripId) {
-      const { data: trip } = await supabaseClient
-        .from('trips')
-        .select('*')
-        .eq('id', sharedTripId)
-        .single();
+    // 不要在 auth callback 裡直接 await，避免阻塞 Supabase Auth 內部流程。
+    // 排到下一個 task 後再進行資料同步。
+    setTimeout(async () => {
+      try {
+        const urlParams = new URLSearchParams(window.location.search);
+        const sharedTripId = urlParams.get('trip_id');
 
-      if (trip) {
-        const formatted = {
-          id: trip.id,
-          destination: trip.destination,
-          startDate: trip.start_date || '',
-          endDate: trip.end_date || '',
-          categories: ensureCategories(trip.categories),
-          updated_at: trip.updated_at
-        };
-        const exists = state.trips.some(t => t.id === formatted.id);
-        if (!exists) state.trips.push(formatted);
-        state.currentTripId = formatted.id;
-        state.view = 'trip';
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(state.trips));
+        if (sharedTripId) {
+          const { data: trip, error } = await supabaseClient
+            .from('trips')
+            .select('*')
+            .eq('id', sharedTripId)
+            .single();
+
+          if (!error && trip) {
+            const formatted = {
+              id: trip.id,
+              destination: trip.destination || '未命名行程',
+              startDate: trip.start_date || '',
+              endDate: trip.end_date || '',
+              categories: ensureCategories(trip.categories),
+              updated_at: trip.updated_at || null
+            };
+
+            const exists = state.trips.some(t => t.id === formatted.id);
+            if (!exists) state.trips.push(formatted);
+
+            state.currentTripId = formatted.id;
+            state.view = 'trip';
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(state.trips));
+          }
+        }
+
+        await loadFromSupabase();
+        subscribeRealtime();
+      } catch (err) {
+        console.error('Auth sync initialization error:', err);
+        showToast('登入成功，但雲端同步初始化失敗：' + (err.message || '未知錯誤'), true);
       }
-    }
+    }, 0);
 
-    await loadFromSupabase();
-    subscribeRealtime();
+    render();
   } else {
     currentUser = null;
+
     if (realtimeChannel) {
       supabaseClient.removeChannel(realtimeChannel);
       realtimeChannel = null;
     }
+
     render();
   }
 });
