@@ -37,7 +37,7 @@ body{
   font-family:var(--body);
   min-height:100vh;
 }
-#app{max-width:1040px;margin:0 auto;padding:28px 20px 80px;}
+#app{max-width:1040px;margin:0 auto;padding:28px 20px 40px;}
 button{font-family:inherit;cursor:pointer;}
 input,textarea,select{font-family:inherit;}
 
@@ -314,6 +314,47 @@ input,textarea,select{font-family:inherit;}
 
 .footer-note{text-align:center;font-size:11.5px;color:var(--ink-soft);margin-top:40px;line-height:1.7;}
 
+/* ---------- Privacy Policy Footer ---------- */
+.privacy-footer {
+  max-width: 1040px;
+  margin: 0 auto 60px;
+  padding: 20px;
+  border-top: 1px dashed var(--line);
+  font-size: 12px;
+  color: var(--ink-soft);
+  line-height: 1.6;
+}
+.privacy-footer details {
+  background: rgba(251, 246, 232, 0.6);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 12px 16px;
+}
+.privacy-footer summary {
+  font-weight: 600;
+  cursor: pointer;
+  color: var(--ink);
+  outline: none;
+}
+.privacy-footer summary:hover {
+  color: var(--teal);
+}
+.privacy-content {
+  margin-top: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.privacy-content h4 {
+  margin: 6px 0 2px;
+  font-size: 13px;
+  color: var(--ink);
+}
+.privacy-content ul {
+  margin: 0;
+  padding-left: 20px;
+}
+
 /* ---------- Modal / Toast ---------- */
 .modal-overlay{
   position:fixed;inset:0;background:rgba(27,42,74,0.35);display:flex;align-items:center;justify-content:center;
@@ -351,6 +392,37 @@ input,textarea,select{font-family:inherit;}
 </head>
 <body>
 <div id="app"></div>
+
+<!-- 頁尾隱私權政策區塊 -->
+<footer class="privacy-footer">
+  <details>
+    <summary>🔒 隱私權政策與資料安全聲明 (Privacy Policy)</summary>
+    <div class="privacy-content">
+      <p>歡迎使用「旅行規劃 All in One」。我們非常重視您的個人隱私與資料安全，以下為本應用的資料處理政策說明：</p>
+      
+      <h4>1. 資料蒐集與使用目的</h4>
+      <ul>
+        <li><strong>訪客模式：</strong>若您未登入 Google 帳號，所有的行程、記帳與清單資料均僅存儲於您個人的瀏覽器本地端（LocalStorage），本系統不會向伺服器傳送或收集任何資料。</li>
+        <li><strong>Google 登入模式：</strong>當您選擇使用 Google 帳號登入時，我們僅會讀取您的基本公開個人資料（如 Email 與頭像），用於識別您的身分、提供跨裝置資料同步及跨使用者專案協作功能。</li>
+      </ul>
+
+      <h4>2. 資料儲存與第三方服務</h4>
+      <ul>
+        <li>本應用使用雲端資料庫服務 <strong>Supabase</strong> 作為資料同步與儲存媒介。登入後之行程資料均經安全傳輸並儲存於 Supabase 的加密資料庫中。</li>
+        <li>我們承諾絕不出售、出租或轉讓您的任何個人資料或行程紀錄給任何第三方機構或廣告商。</li>
+      </ul>
+
+      <h4>3. 使用者權利與資料刪除</h4>
+      <ul>
+        <li>您可以隨時匯出您的行程資料（JSON 備份格式）。</li>
+        <li>若您在應用中刪除行程，該筆資料將同步於本地及雲端資料庫中永久刪除。</li>
+        <li>如欲徹底清除雲端帳戶紀錄，您亦可選擇隨時登出或聯繫系統管理員協助進行資料抹除。</li>
+      </ul>
+      <p style="margin-top: 6px; font-size: 11px; color: var(--ink-soft);">最近更新日期：2026 年 8 月</p>
+    </div>
+  </details>
+</footer>
+
 <input type="file" id="import-input" accept="application/json" style="display:none;">
 
 <script>
@@ -470,7 +542,7 @@ function scheduleSave(){
   }, 600);
 }
 
-/* ===================== Supabase 同步與 Realtime 邏輯 ===================== */
+/* ===================== Supabase 同步與 Realtime 邏輯 (修正版) ===================== */
 async function signInWithGoogle() {
   await supabaseClient.auth.signInWithOAuth({
     provider: 'google',
@@ -506,6 +578,7 @@ function subscribeRealtime() {
     .subscribe();
 }
 
+/* 【修正：新增/更新資料至 Supabase】 */
 async function syncToSupabase() {
   if(!currentUser) return;
   isSyncing = true;
@@ -514,18 +587,22 @@ async function syncToSupabase() {
 
   try {
     for (const trip of state.trips) {
+      // 確保傳遞完整的結構與 updated_at 時間戳記
       const { error } = await supabaseClient
         .from('trips')
         .upsert({
           id: trip.id,
           user_id: currentUser.id,
-          destination: trip.destination,
-          start_date: trip.startDate,
-          end_date: trip.endDate,
-          categories: trip.categories,
-          updated_at: new Date()
-        });
-      if (error) console.error("Cloud Sync Error:", error);
+          destination: trip.destination || '未命名行程',
+          start_date: trip.startDate || null,
+          end_date: trip.endDate || null,
+          categories: trip.categories || emptyCategories(),
+          updated_at: new Date().toISOString()
+        }, { onConflict: 'id' });
+        
+      if (error) {
+        console.error("Cloud Upsert Error:", error);
+      }
     }
   } catch(err) {
     console.error("Cloud Sync failed:", err);
@@ -536,6 +613,7 @@ async function syncToSupabase() {
   }
 }
 
+/* 【修正：從 Supabase 讀取資料】 */
 async function syncFromSupabase(isRealtimeTrigger = false) {
   if(!currentUser) return;
   if(!isRealtimeTrigger) {
@@ -544,37 +622,45 @@ async function syncFromSupabase(isRealtimeTrigger = false) {
   }
 
   try {
-    const { data: userTrips } = await supabaseClient
+    // 1. 取得自己建立的行程
+    const { data: userTrips, error: userTripsErr } = await supabaseClient
       .from('trips')
       .select('*')
       .eq('user_id', currentUser.id);
 
-    const { data: collabData } = await supabaseClient
+    if (userTripsErr) throw userTripsErr;
+
+    // 2. 取得被分享/協作的行程
+    const { data: collabData, error: collabErr } = await supabaseClient
       .from('trip_collaborators')
       .select('trip_id')
       .eq('email', currentUser.email);
 
+    if (collabErr) console.warn("Fetch collaborators error:", collabErr);
+
     let collabTrips = [];
     if (collabData && collabData.length > 0) {
       const tripIds = collabData.map(c => c.trip_id);
-      const { data: shared } = await supabaseClient
+      const { data: shared, error: sharedErr } = await supabaseClient
         .from('trips')
         .select('*')
         .in('id', tripIds);
-      if (shared) collabTrips = shared;
+      if (!sharedErr && shared) collabTrips = shared;
     }
 
+    // 3. 整合遠端資料
     const allRemote = [...(userTrips || []), ...collabTrips];
     
     if (allRemote.length > 0) {
       const remoteFormatted = allRemote.map(t => ({
         id: t.id,
-        destination: t.destination,
+        destination: t.destination || '未命名行程',
         startDate: t.start_date || '',
         endDate: t.end_date || '',
         categories: t.categories || emptyCategories()
       }));
 
+      // 以 id 為 key 進行合併（避免覆蓋與重複）
       const mergedMap = new Map();
       state.trips.forEach(t => mergedMap.set(t.id, t));
       remoteFormatted.forEach(t => mergedMap.set(t.id, t));
@@ -582,6 +668,7 @@ async function syncFromSupabase(isRealtimeTrigger = false) {
       state.trips = Array.from(mergedMap.values());
       localStorage.setItem(STORAGE_KEY, JSON.stringify(state.trips));
     } else if (state.trips.length > 0 && !isRealtimeTrigger) {
+      // 雲端無資料但本地有，自動推送到雲端
       await syncToSupabase();
     }
   } catch(e) {
