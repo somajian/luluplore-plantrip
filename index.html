@@ -80,6 +80,7 @@ input,textarea,select{font-family:inherit;}
 /* ---------- Header ---------- */
 .brand{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:6px;flex-wrap:wrap;gap:8px;}
 .brand h1{font-family:var(--serif-ui);font-size:30px;font-weight:700;margin:0;letter-spacing:-0.02em;}
+.brand .stamp-icon{display:inline-block;transform:rotate(-6deg);margin-right:6px;}
 .made-by{font-family:var(--mono);font-size:11px;color:var(--brass);letter-spacing:.03em;white-space:nowrap;}
 .brand-sub{font-size:13px;color:var(--ink-soft);margin:0 0 16px;}
 .toolbar{display:flex;gap:8px;margin-bottom:26px;flex-wrap:wrap;}
@@ -456,18 +457,22 @@ const EXPENSE_CATS = ['吃','住','交通','購物','娛樂','景點門票','其
 function paymentSuggestions(){
   const set = new Set(['現金']);
   state.trips.forEach(t=>{
-    (t.categories.expenses.items||[]).forEach(i=>{
-      if(i.payment && i.payment.trim()) set.add(i.payment.trim());
-    });
+    if(t.categories && t.categories.expenses && t.categories.expenses.items){
+      t.categories.expenses.items.forEach(i=>{
+        if(i.payment && i.payment.trim()) set.add(i.payment.trim());
+      });
+    }
   });
   return Array.from(set);
 }
 function categorySuggestions(){
   const set = new Set(EXPENSE_CATS);
   state.trips.forEach(t=>{
-    (t.categories.expenses.items||[]).forEach(i=>{
-      if(i.category && i.category.trim()) set.add(i.category.trim());
-    });
+    if(t.categories && t.categories.expenses && t.categories.expenses.items){
+      t.categories.expenses.items.forEach(i=>{
+        if(i.category && i.category.trim()) set.add(i.category.trim());
+      });
+    }
   });
   return Array.from(set);
 }
@@ -494,6 +499,19 @@ function emptyCategories(){
   });
   return o;
 }
+
+// 補齊與驗證分類結構，避免遠端舊資料/空資料導致前端報錯
+function ensureCategories(cats){
+  const base = emptyCategories();
+  if(!cats || typeof cats !== 'object') return base;
+  CATS.forEach(c => {
+    if(cats[c.id] && Array.isArray(cats[c.id].items)){
+      base[c.id] = cats[c.id];
+    }
+  });
+  return base;
+}
+
 function escapeHtml(s){
   return (s==null?'':String(s)).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 }
@@ -520,9 +538,16 @@ const STORAGE_KEY = 'tripPlannerAllInOne_trips_v1';
 function loadTrips(){
   try{
     const raw = localStorage.getItem(STORAGE_KEY);
-    if(raw) return JSON.parse(raw);
+    if(raw) {
+      const parsed = JSON.parse(raw);
+      return parsed.map(t => ({ ...t, categories: ensureCategories(t.categories) }));
+    }
   }catch(e){}
   return [];
+}
+
+function saveToSupabase() {
+  return syncToSupabase();
 }
 
 function scheduleSave(){
@@ -531,7 +556,7 @@ function scheduleSave(){
     try{ 
       localStorage.setItem(STORAGE_KEY, JSON.stringify(state.trips)); 
       if(currentUser) {
-        await syncToSupabase();
+        await saveToSupabase();
       }
     }
     catch(e){
@@ -577,35 +602,32 @@ function subscribeRealtime() {
     .subscribe();
 }
 
-/* 新增／更新資料至 Supabase (Cloud Sync) */
+/* 上傳/推送到 Supabase */
 async function syncToSupabase() {
-  if (!currentUser) return;
+  if(!currentUser) return;
   isSyncing = true;
   isRemoteUpdating = true;
   render();
 
   try {
-    if (state.trips.length > 0) {
-      // 構建批次 upsert 資料
-      const recordsToUpsert = state.trips.map(trip => ({
-        id: trip.id,
-        user_id: currentUser.id,
-        destination: trip.destination || '未命名行程',
-        start_date: trip.startDate || null,
-        end_date: trip.endDate || null,
-        categories: trip.categories || emptyCategories(),
-        updated_at: new Date().toISOString()
-      }));
-
-      const { data, error } = await supabaseClient
+    for (const trip of state.trips) {
+      const { error } = await supabaseClient
         .from('trips')
-        .upsert(recordsToUpsert, { onConflict: 'id' });
-
+        .upsert({
+          id: trip.id,
+          user_id: currentUser.id,
+          destination: trip.destination || '未命名行程',
+          start_date: trip.startDate || null,
+          end_date: trip.endDate || null,
+          categories: trip.categories || emptyCategories(),
+          updated_at: new Date().toISOString()
+        }, { onConflict: 'id' });
+        
       if (error) {
-        console.error("Cloud Sync Upsert Error:", error);
+        console.error("Cloud Upsert Error:", error);
       }
     }
-  } catch (err) {
+  } catch(err) {
     console.error("Cloud Sync failed:", err);
   } finally {
     isSyncing = false;
@@ -614,69 +636,78 @@ async function syncToSupabase() {
   }
 }
 
-/* 從 Supabase 讀取資料 (Cloud Pull) */
+/* 從 Supabase 載入資料 (別名 alias: loadFromSupabase) */
+async function loadFromSupabase() {
+  return syncFromSupabase();
+}
+
+/* 從 Supabase 拉取與合併資料 */
 async function syncFromSupabase(isRealtimeTrigger = false) {
-  if (!currentUser) return;
-  if (!isRealtimeTrigger) {
+  if(!currentUser) return;
+  if(!isRealtimeTrigger) {
     isSyncing = true;
     render();
   }
 
   try {
-    // 1. 讀取使用者建立的行程
-    const { data: userTrips, error: userError } = await supabaseClient
+    // 1. 取得自己建立的行程
+    const { data: userTrips, error: userTripsErr } = await supabaseClient
       .from('trips')
       .select('*')
       .eq('user_id', currentUser.id);
 
-    if (userError) {
-      console.error("Fetch user trips error:", userError);
-    }
+    if (userTripsErr) throw userTripsErr;
 
-    // 2. 讀取作為協作者被分享的行程
-    const { data: collabData, error: collabError } = await supabaseClient
+    // 2. 取得被分享/協作的行程
+    const { data: collabData, error: collabErr } = await supabaseClient
       .from('trip_collaborators')
       .select('trip_id')
       .eq('email', currentUser.email);
 
-    if (collabError) {
-      console.error("Fetch collaborator info error:", collabError);
-    }
+    if (collabErr) console.warn("Fetch collaborators error:", collabErr);
 
     let collabTrips = [];
     if (collabData && collabData.length > 0) {
       const tripIds = collabData.map(c => c.trip_id);
-      const { data: shared, error: sharedError } = await supabaseClient
+      const { data: shared, error: sharedErr } = await supabaseClient
         .from('trips')
         .select('*')
         .in('id', tripIds);
-      
-      if (!sharedError && shared) {
-        collabTrips = shared;
-      }
+      if (!sharedErr && shared) collabTrips = shared;
     }
 
-    // 3. 整合雲端遠端資料
+    // 3. 整合與格式化遠端資料
     const allRemote = [...(userTrips || []), ...collabTrips];
-
+    
     if (allRemote.length > 0) {
       const remoteFormatted = allRemote.map(t => ({
         id: t.id,
-        destination: t.destination || '',
+        destination: t.destination || '未命名行程',
         startDate: t.start_date || '',
         endDate: t.end_date || '',
-        categories: t.categories || emptyCategories()
+        categories: ensureCategories(t.categories),
+        updated_at: t.updated_at || null
       }));
 
-      // 以 Map 進行合併，遠端資料優先更新本地
+      // 以 ID 進行合併
       const mergedMap = new Map();
       state.trips.forEach(t => mergedMap.set(t.id, t));
-      remoteFormatted.forEach(t => mergedMap.set(t.id, t));
+      
+      remoteFormatted.forEach(rt => {
+        if (!mergedMap.has(rt.id)) {
+          mergedMap.set(rt.id, rt);
+        } else {
+          const local = mergedMap.get(rt.id);
+          if (!local.updated_at || (rt.updated_at && new Date(rt.updated_at) >= new Date(local.updated_at))) {
+            mergedMap.set(rt.id, rt);
+          }
+        }
+      });
 
       state.trips = Array.from(mergedMap.values());
       localStorage.setItem(STORAGE_KEY, JSON.stringify(state.trips));
     } else if (state.trips.length > 0 && !isRealtimeTrigger) {
-      // 雲端無資料但本地有，自動推送到雲端
+      // 雲端尚無資料，把本地行程推上去
       await syncToSupabase();
     }
   } catch(e) {
@@ -708,7 +739,8 @@ supabaseClient.auth.onAuthStateChange(async (event, session) => {
           destination: trip.destination,
           startDate: trip.start_date || '',
           endDate: trip.end_date || '',
-          categories: trip.categories || emptyCategories()
+          categories: ensureCategories(trip.categories),
+          updated_at: trip.updated_at
         };
         const exists = state.trips.some(t => t.id === formatted.id);
         if (!exists) state.trips.push(formatted);
@@ -718,7 +750,7 @@ supabaseClient.auth.onAuthStateChange(async (event, session) => {
       }
     }
 
-    await syncFromSupabase();
+    await loadFromSupabase();
     subscribeRealtime();
   } else {
     currentUser = null;
@@ -732,7 +764,7 @@ supabaseClient.auth.onAuthStateChange(async (event, session) => {
 
 /* ===================== 計算 ===================== */
 function catProgress(trip, cat){
-  const items = trip.categories[cat.id].items;
+  const items = (trip.categories[cat.id] && trip.categories[cat.id].items) || [];
   if(cat.type === 'expense') return null;
   if(items.length === 0) return {done:0, total:0};
   const done = items.filter(i=>i.checked).length;
@@ -742,7 +774,7 @@ function overallProgress(trip){
   let done=0, total=0;
   CATS.forEach(c=>{
     if(c.type==='expense') return;
-    const items = trip.categories[c.id].items;
+    const items = (trip.categories[c.id] && trip.categories[c.id].items) || [];
     done += items.filter(i=>i.checked).length;
     total += items.length;
   });
@@ -750,7 +782,8 @@ function overallProgress(trip){
 }
 function expenseTotalsByCurrency(trip){
   const map = {};
-  trip.categories.expenses.items.forEach(i=>{
+  const items = (trip.categories.expenses && trip.categories.expenses.items) || [];
+  items.forEach(i=>{
     const cur = (i.currency||'').trim() || '未填幣別';
     map[cur] = (map[cur]||0) + (parseFloat(i.amount)||0);
   });
@@ -758,11 +791,14 @@ function expenseTotalsByCurrency(trip){
 }
 function exchangeReconByCurrency(trip){
   const exch = {}, spent = {};
-  trip.categories.exchange.items.filter(i=>i.checked).forEach(i=>{
+  const exchItems = (trip.categories.exchange && trip.categories.exchange.items) || [];
+  const expItems = (trip.categories.expenses && trip.categories.expenses.items) || [];
+
+  exchItems.filter(i=>i.checked).forEach(i=>{
     const cur = (i.currency||'').trim() || '未填幣別';
     exch[cur] = (exch[cur]||0) + (parseFloat(i.amount)||0);
   });
-  trip.categories.expenses.items.filter(i=>(i.payment||'')==='現金').forEach(i=>{
+  expItems.filter(i=>(i.payment||'')==='現金').forEach(i=>{
     const cur = (i.currency||'').trim() || '未填幣別';
     spent[cur] = (spent[cur]||0) + (parseFloat(i.amount)||0);
   });
@@ -777,8 +813,10 @@ function exchangeReconByCurrency(trip){
 function currencySuggestions(){
   const set = new Set(['JPY','USD','TWD','KRW','EUR']);
   state.trips.forEach(t=>{
-    (t.categories.expenses.items||[]).forEach(i=>{ if(i.currency && i.currency.trim()) set.add(i.currency.trim()); });
-    (t.categories.exchange.items||[]).forEach(i=>{ if(i.currency && i.currency.trim()) set.add(i.currency.trim()); });
+    if(t.categories){
+      ((t.categories.expenses && t.categories.expenses.items)||[]).forEach(i=>{ if(i.currency && i.currency.trim()) set.add(i.currency.trim()); });
+      ((t.categories.exchange && t.categories.exchange.items)||[]).forEach(i=>{ if(i.currency && i.currency.trim()) set.add(i.currency.trim()); });
+    }
   });
   return Array.from(set);
 }
@@ -998,7 +1036,7 @@ function renderListView(){
   return `
     ${renderAuthBar()}
     <div class="brand">
-      <h1>旅行規劃All in One</h1>
+      <h1><span class="stamp-icon">Passport</span>旅行規劃All in One</h1>
       <span class="made-by">Made By Luluplore</span>
     </div>
     <p class="brand-sub">完整記錄每趟旅程，一目了然旅行的準備進度！</p>
@@ -1015,7 +1053,7 @@ function renderListView(){
 
 /* ===================== 花費統整／換匯結餘 ===================== */
 function renderExpenseSummaryInner(trip){
-  const items = trip.categories.expenses.items;
+  const items = (trip.categories.expenses && trip.categories.expenses.items) || [];
   if(items.length===0) return '<div class="summary-row"><span>尚無資料</span><span>–</span></div>';
   const currencies = Array.from(new Set(items.map(i=>(i.currency||'').trim() || '未填幣別')));
   const rowsHtml = (arr) => arr.map(([k,v])=>`<div class="summary-row"><span>${escapeHtml(k)}</span><span>${v.toLocaleString()}</span></div>`).join('');
@@ -1055,8 +1093,8 @@ function renderExchangeReconInner(trip){
 
 /* ===================== 渲染：單一分類卡片 ===================== */
 function renderCategoryCard(trip, cat){
-  const data = trip.categories[cat.id];
-  const items = data.items;
+  const data = trip.categories[cat.id] || { items: [] };
+  const items = data.items || [];
   const isExpense = cat.type === 'expense';
   const isExchange = cat.type === 'exchange';
 
@@ -1331,8 +1369,9 @@ function exportData(){
 }
 
 function applyImportedTrips(parsed, sourceLabel){
+  const cleanParsed = parsed.map(t => ({ ...t, categories: ensureCategories(t.categories) }));
   if(state.trips.length === 0){
-    state.trips = parsed;
+    state.trips = cleanParsed;
     scheduleSave();
     render();
     showToast(sourceLabel + '匯入完成！');
@@ -1343,12 +1382,12 @@ function applyImportedTrips(parsed, sourceLabel){
     choices: [
       {label:'取消'},
       {label:'加入到目前清單', primary:true, onClick: ()=>{
-        state.trips = state.trips.concat(parsed);
+        state.trips = state.trips.concat(cleanParsed);
         scheduleSave();
         ui.toast = {msg:'匯入完成！', isError:false};
       }},
       {label:'整個取代', danger:true, onClick: ()=>{
-        state.trips = parsed;
+        state.trips = cleanParsed;
         scheduleSave();
         ui.toast = {msg:'匯入完成！', isError:false};
       }},
