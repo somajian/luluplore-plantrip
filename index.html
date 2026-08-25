@@ -361,6 +361,8 @@ const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 let currentUser = null;
 let isSyncing = false;
+let realtimeChannel = null;
+let isRemoteUpdating = false;
 
 /* ===================== 資料設定 ===================== */
 const CATS = [
@@ -465,10 +467,10 @@ function scheduleSave(){
       console.error('儲存失敗', e);
       showToast('儲存失敗，可能是瀏覽器處於無痕模式或儲存空間已滿，建議立即匯出備份', true);
     }
-  }, 800);
+  }, 600);
 }
 
-/* ===================== Supabase 同步與 Auth 邏輯 ===================== */
+/* ===================== Supabase 同步與 Realtime 邏輯 ===================== */
 async function signInWithGoogle() {
   await supabaseClient.auth.signInWithOAuth({
     provider: 'google',
@@ -477,20 +479,42 @@ async function signInWithGoogle() {
 }
 
 async function signOut() {
+  if (realtimeChannel) {
+    supabaseClient.removeChannel(realtimeChannel);
+    realtimeChannel = null;
+  }
   await supabaseClient.auth.signOut();
   currentUser = null;
   render();
   showToast('已安全登出');
 }
 
+/* 訂閱 Realtime 頻道（雙端同步核心） */
+function subscribeRealtime() {
+  if (!currentUser || realtimeChannel) return;
+
+  realtimeChannel = supabaseClient
+    .channel('realtime_trips_changes')
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'trips' }, async (payload) => {
+      if (isRemoteUpdating) return; 
+      await syncFromSupabase(true);
+    })
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'trip_collaborators' }, async (payload) => {
+      if (isRemoteUpdating) return;
+      await syncFromSupabase(true);
+    })
+    .subscribe();
+}
+
 async function syncToSupabase() {
   if(!currentUser) return;
   isSyncing = true;
+  isRemoteUpdating = true;
   render();
 
   try {
     for (const trip of state.trips) {
-      const { data, error } = await supabaseClient
+      const { error } = await supabaseClient
         .from('trips')
         .upsert({
           id: trip.id,
@@ -507,22 +531,25 @@ async function syncToSupabase() {
     console.error("Cloud Sync failed:", err);
   } finally {
     isSyncing = false;
+    setTimeout(() => { isRemoteUpdating = false; }, 1000);
     render();
   }
 }
 
-async function syncFromSupabase() {
+async function syncFromSupabase(isRealtimeTrigger = false) {
   if(!currentUser) return;
-  isSyncing = true;
-  render();
+  if(!isRealtimeTrigger) {
+    isSyncing = true;
+    render();
+  }
 
   try {
-    const { data: userTrips, error: err1 } = await supabaseClient
+    const { data: userTrips } = await supabaseClient
       .from('trips')
       .select('*')
       .eq('user_id', currentUser.id);
 
-    const { data: collabData, error: err2 } = await supabaseClient
+    const { data: collabData } = await supabaseClient
       .from('trip_collaborators')
       .select('trip_id')
       .eq('email', currentUser.email);
@@ -554,7 +581,7 @@ async function syncFromSupabase() {
 
       state.trips = Array.from(mergedMap.values());
       localStorage.setItem(STORAGE_KEY, JSON.stringify(state.trips));
-    } else if (state.trips.length > 0) {
+    } else if (state.trips.length > 0 && !isRealtimeTrigger) {
       await syncToSupabase();
     }
   } catch(e) {
@@ -597,8 +624,13 @@ supabaseClient.auth.onAuthStateChange(async (event, session) => {
     }
 
     await syncFromSupabase();
+    subscribeRealtime();
   } else {
     currentUser = null;
+    if (realtimeChannel) {
+      supabaseClient.removeChannel(realtimeChannel);
+      realtimeChannel = null;
+    }
     render();
   }
 });
@@ -817,7 +849,7 @@ function renderAuthBar() {
           <span>${escapeHtml(email)}</span>
           <div class="sync-indicator">
             <span class="sync-dot ${isSyncing ? 'syncing' : 'synced'}"></span>
-            ${isSyncing ? '雲端同步中...' : '雲端已同步'}
+            ${isSyncing ? '雲端同步中...' : ' Realtime 即時連動中'}
           </div>
         </div>
         <button class="btn-auth" data-action="auth-logout">登出</button>
@@ -871,7 +903,7 @@ function renderListView(){
   return `
     ${renderAuthBar()}
     <div class="brand">
-      <h1><span class="stamp-icon">🛂</span>旅行規劃All in One</h1>
+      <h1><span class="stamp-icon">Passport</span>旅行規劃All in One</h1>
       <span class="made-by">Made By Luluplore</span>
     </div>
     <p class="brand-sub">完整記錄每趟旅程，一目了然旅行的準備進度！</p>
