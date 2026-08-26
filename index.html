@@ -530,7 +530,7 @@ function escapeHtml(s){
 function escapeAttr(s){ return escapeHtml(s).replace(/"/g,'&quot;'); }
 
 /* ===================== 狀態 ===================== */
-let state = { trips: [], view: 'list', currentTripId: null };
+let state = { trips: loadTrips(), view: 'list', currentTripId: null };
 let ui = {
   draft: {destination:'', start:'', end:''},
   newItem: {},
@@ -632,7 +632,7 @@ function subscribeRealtime() {
     .channel('realtime_trips_changes_' + currentUser.id)
     .on(
       'postgres_changes',
-      { event: '*', schema: 'public', table: 'trips', filter: `user_id=eq.${currentUser.id}` },
+      { event: '*', schema: 'public', table: 'trips' },
       async () => {
         if (isRemoteUpdating) return;
         await syncFromSupabase(true);
@@ -779,32 +779,18 @@ async function syncFromSupabase(isRealtimeTrigger = false) {
       updated_at: t.updated_at || null
     }));
 
-    const localMap = new Map(
-      (state.trips || []).map(t => [t.id, t])
-    );
-
-    const remoteOwnedMap = new Map(
-      remoteOwned.map(t => [t.id, t])
-    );
-
+    const localMap = new Map((state.trips || []).map(t => [t.id, t]));
+    const remoteOwnedMap = new Map(remoteOwned.map(t => [t.id, t]));
     const mergedMap = new Map();
 
     remoteOwned.forEach(remoteTrip => {
       const localTrip = localMap.get(remoteTrip.id);
-
       if (!localTrip) {
         mergedMap.set(remoteTrip.id, remoteTrip);
         return;
       }
-
-      const localTime = localTrip.updated_at
-        ? new Date(localTrip.updated_at).getTime()
-        : 0;
-
-      const remoteTime = remoteTrip.updated_at
-        ? new Date(remoteTrip.updated_at).getTime()
-        : 0;
-
+      const localTime = localTrip.updated_at ? new Date(localTrip.updated_at).getTime() : 0;
+      const remoteTime = remoteTrip.updated_at ? new Date(remoteTrip.updated_at).getTime() : 0;
       if (remoteTime >= localTime) {
         mergedMap.set(remoteTrip.id, remoteTrip);
       } else {
@@ -835,19 +821,11 @@ async function syncFromSupabase(isRealtimeTrigger = false) {
     state.trips = Array.from(mergedMap.values());
 
     const tripsNeedingUpload = [];
-
     remoteOwned.forEach(remoteTrip => {
       const localTrip = localMap.get(remoteTrip.id);
       if (!localTrip) return;
-
-      const localTime = localTrip.updated_at
-        ? new Date(localTrip.updated_at).getTime()
-        : 0;
-
-      const remoteTime = remoteTrip.updated_at
-        ? new Date(remoteTrip.updated_at).getTime()
-        : 0;
-
+      const localTime = localTrip.updated_at ? new Date(localTrip.updated_at).getTime() : 0;
+      const remoteTime = remoteTrip.updated_at ? new Date(remoteTrip.updated_at).getTime() : 0;
       if (localTime > remoteTime) {
         tripsNeedingUpload.push(localTrip);
       }
@@ -994,30 +972,6 @@ function groupSum(items, field){
     map[key] = (map[key]||0) + (parseFloat(i.amount)||0);
   });
   return Object.entries(map).sort((a,b)=>b[1]-a[1]);
-}
-
-function matchWholeDate(line, trip){
-  const s = line.trim();
-  const full = s.match(/^(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})$/);
-  if(full) return `${full[1]}-${full[2].padStart(2,'0')}-${full[3].padStart(2,'0')}`;
-  const short = s.match(/^(\d{1,2})[\/\-](\d{1,2})$/);
-  if(short){
-    let year = new Date().getFullYear();
-    if(trip && trip.startDate){
-      const y2 = parseInt(trip.startDate.slice(0,4), 10);
-      if(!isNaN(y2)) year = y2;
-    }
-    return `${year}-${short[1].padStart(2,'0')}-${short[2].padStart(2,'0')}`;
-  }
-  return null;
-}
-function matchDayHeader(line){
-  const s = line.trim();
-  const m1 = s.match(/^day\s*[:\.]?\s*(\d+)$/i);
-  if(m1) return 'Day ' + m1[1];
-  const m2 = s.match(/^第\s*(\d+)\s*天$/);
-  if(m2) return 'Day ' + m2[1];
-  return null;
 }
 
 function parseExpenseLine(line, trip, inheritedDate){
@@ -1416,6 +1370,8 @@ function renderTripView(){
   const trip = state.trips.find(t=>t.id===state.currentTripId);
   if(!trip){ state.view='list'; return renderListView(); }
   const pct = overallProgress(trip);
+  
+  // 核心權限修正：判斷當前使用者是否為建立者 (Owner)
   const isOwner = !trip.user_id || (currentUser && trip.user_id === currentUser.id);
 
   const catsHtml = CATS.map(c=>renderCategoryCard(trip, c)).join('');
@@ -1430,7 +1386,10 @@ function renderTripView(){
         <button class="back-btn" data-action="back">← 返回所有行程</button>
         <div class="th-top-right">
           <button class="modal-btn" data-action="open-share-modal">🔗 分享與協作</button>
-          ${isOwner ? `<button class="trip-delete-lg" data-action="delete-trip" data-id="${trip.id}">刪除此行程</button>` : `<button class="trip-delete-lg" data-action="leave-collaboration" data-id="${trip.id}">退出協作</button>`}
+          ${isOwner 
+            ? `<button class="trip-delete-lg" data-action="delete-trip" data-id="${trip.id}">刪除此行程</button>` 
+            : `<button class="trip-delete-lg" data-action="leave-collaboration" data-id="${trip.id}">退出協作</button>`
+          }
         </div>
       </div>
       <div class="th-row">
@@ -1664,164 +1623,200 @@ app.addEventListener('input', (e)=>{
   const field = e.target.dataset.field;
   const newField = e.target.dataset.newField;
   const cat = e.target.dataset.cat;
-  const bulkCat = e.target.dataset.bulkCat;
+
+  if (e.target.dataset.bulkCat) {
+    ui.bulkDraft[e.target.dataset.bulkCat] = e.target.value;
+    return;
+  }
 
   if (field === 'new-destination') ui.draft.destination = e.target.value;
   if (field === 'new-start') ui.draft.start = e.target.value;
   if (field === 'new-end') ui.draft.end = e.target.value;
 
-  if (bulkCat) {
-    ui.bulkDraft[bulkCat] = e.target.value;
+  const trip = state.trips.find(t=>t.id===state.currentTripId);
+  if (!trip) return;
+
+  if (e.target.dataset.action === 'update-trip-field') {
+    trip[field] = e.target.value;
+    scheduleSave();
+    return;
+  }
+
+  const itemBlock = e.target.closest('.item-block');
+  if (itemBlock && field) {
+    const catId = itemBlock.dataset.cat;
+    const itemId = itemBlock.dataset.item;
+    const item = trip.categories[catId]?.items?.find(i=>i.id===itemId);
+    if (item) {
+      item[field] = e.target.value;
+      scheduleSave();
+    }
+    return;
   }
 
   if (newField && cat) {
     if (!ui.newItem[cat]) ui.newItem[cat] = {};
     ui.newItem[cat][newField] = e.target.value;
   }
-
-  const trip = state.trips.find(t => t.id === state.currentTripId);
-  if (!trip) return;
-
-  const action = e.target.dataset.action;
-  if (action === 'update-trip-field') {
-    const f = e.target.dataset.field;
-    if (f) {
-      trip[f] = e.target.value;
-      scheduleSave();
-    }
-  }
-
-  const itemBlock = e.target.closest('.item-block');
-  if (itemBlock && field) {
-    const itemCat = itemBlock.dataset.cat;
-    const itemId = itemBlock.dataset.item;
-    const item = trip.categories[itemCat]?.items.find(i => i.id === itemId);
-    if (item) {
-      item[field] = e.target.value;
-      scheduleSave();
-    }
-  }
 });
 
+/* 全域點擊事件代理 */
 app.addEventListener('click', async (e)=>{
-  const el = e.target.closest('[data-action]');
-  if(!el) return;
-  const action = el.dataset.action;
+  const actionBtn = e.target.closest('[data-action]');
+  if (!actionBtn) return;
 
-  if(action === 'auth-login'){
-    signInWithGoogle();
-  }
-  else if(action === 'auth-logout'){
-    signOut();
-  }
-  else if(action === 'open-share-modal'){
-    ui.shareModal = true;
-    render();
-  }
-  else if(action === 'close-share-modal'){
-    ui.shareModal = false;
-    render();
-  }
-  else if(action === 'copy-share-url'){
-    const url = el.dataset.url;
-    await copyText(url);
-    showToast('專屬分享連結已複製！');
-  }
-  else if(action === 'add-collaborator'){
-    const input = document.getElementById('collab-email-input');
-    const email = input ? input.value.trim() : '';
-    if(!email) { showToast('請輸入 Email', true); return; }
-    
-    const { error } = await supabaseClient.from('trip_collaborators').insert({
-      trip_id: state.currentTripId,
-      email: email,
-      role: 'editor'
-    });
+  const action = actionBtn.dataset.action;
+  const id = actionBtn.dataset.id;
+  const cat = actionBtn.dataset.cat;
+  const item = actionBtn.dataset.item;
 
-    if(error) {
-      showToast('新增失敗：' + error.message, true);
-    } else {
-      showToast(`已成功將 ${email} 新增為協作者！`);
-      if(input) input.value = '';
-    }
-  }
-  else if(action === 'open-trip'){
-    state.currentTripId = el.dataset.id;
+  if (action === 'auth-login') signInWithGoogle();
+  if (action === 'auth-logout') signOut();
+  if (action === 'export-data') exportData();
+  if (action === 'trigger-import') importInput.click();
+
+  if (action === 'open-trip') {
+    state.currentTripId = id;
     state.view = 'trip';
-    ui.expanded = new Set();
-    ui.bulkOpen = new Set();
-    ui.summaryOpen = new Set();
     render();
   }
-  else if(action === 'back'){
+
+  if (action === 'back') {
     state.view = 'list';
+    state.currentTripId = null;
     render();
   }
-  else if(action === 'export-data'){
-    exportData();
+
+  if (action === 'create-trip') {
+    const dest = ui.draft.destination.trim();
+    if (!dest) { showToast('請填寫目的地', true); return; }
+    const newTrip = {
+      id: uid(),
+      user_id: currentUser ? currentUser.id : null,
+      destination: dest,
+      startDate: ui.draft.start,
+      endDate: ui.draft.end,
+      categories: emptyCategories(),
+      updated_at: new Date().toISOString()
+    };
+    state.trips.unshift(newTrip);
+    ui.draft = {destination:'', start:'', end:''};
+    scheduleSave();
+    state.currentTripId = newTrip.id;
+    state.view = 'trip';
+    render();
+    showToast('行程已建立！');
   }
-  else if(action === 'trigger-import'){
-    importInput.click();
-  }
-  else if(action === 'delete-trip'){
+
+  // 行程建立者：整筆刪除行程
+  if (action === 'delete-trip') {
     e.stopPropagation();
-    const id = el.dataset.id;
-    const t = state.trips.find(x=>x.id===id);
-    if(!t) return;
-
-    // 嚴格檢測 Owner 權限
-    const isOwner = !t.user_id || (currentUser && t.user_id === currentUser.id);
-    if (!isOwner) {
-      showToast('僅有此行程的建立者有權限刪除行程！', true);
-      return;
-    }
-
     ui.confirm = {
-      message: '確定要刪除「' + (t.destination||'未命名行程') + '」這趟行程嗎？此動作無法復原。',
+      message: '確定要刪除這趟行程嗎？這將無法復原。',
       choices: [
         {label:'取消'},
-        {label:'刪除', danger:true, onClick: async ()=>{
-          state.trips = state.trips.filter(x=>x.id!==id);
-          scheduleSave();
-          if(currentUser) {
-            await supabaseClient.from('trips').delete().eq('id', id);
+        {label:'確定刪除', danger:true, onClick: async ()=>{
+          const deleteId = id || state.currentTripId;
+          state.trips = state.trips.filter(t=>t.id!==deleteId);
+          
+          if (currentUser) {
+            await supabaseClient.from('trips').delete().eq('id', deleteId);
           }
-          if(state.currentTripId===id){ state.currentTripId=null; state.view='list'; }
-        }},
-      ],
+          
+          if (state.currentTripId === deleteId) {
+            state.view = 'list';
+            state.currentTripId = null;
+          }
+          scheduleSave();
+          showToast('行程已刪除');
+        }}
+      ]
     };
     render();
   }
-  else if(action === 'leave-collaboration'){
-    e.stopPropagation();
-    const id = el.dataset.id;
-    const t = state.trips.find(x=>x.id===id);
-    if(!t || !currentUser) return;
 
+  // 協作者：退出協作
+  if (action === 'leave-collaboration') {
     ui.confirm = {
-      message: '確定要退出「' + (t.destination||'未命名行程') + '」的協作嗎？退出後將不再顯示此行程。',
+      message: '確定要退出此行程的協作嗎？退出後您將無法繼續檢視與編輯此行程。',
       choices: [
         {label:'取消'},
-        {label:'退出協作', danger:true, onClick: async ()=>{
-          state.trips = state.trips.filter(x=>x.id!==id);
+        {label:'確定退出', danger:true, onClick: async ()=>{
+          const tripId = id || state.currentTripId;
+          state.trips = state.trips.filter(t=>t.id!==tripId);
+          
+          if (currentUser && currentUser.email) {
+            await supabaseClient
+              .from('trip_collaborators')
+              .delete()
+              .eq('trip_id', tripId)
+              .eq('email', currentUser.email.toLowerCase());
+          }
+          
+          state.view = 'list';
+          state.currentTripId = null;
           scheduleSave();
-          await supabaseClient.from('trip_collaborators')
-            .delete()
-            .eq('trip_id', id)
-            .eq('email', (currentUser.email || '').toLowerCase());
-          if(state.currentTripId===id){ state.currentTripId=null; state.view='list'; }
-        }},
-      ],
+          showToast('您已成功退出協作');
+        }}
+      ]
     };
     render();
   }
-  else if(action === 'add-item'){
-    const cat = el.dataset.cat;
-    const trip = state.trips.find(t=>t.id===state.currentTripId);
-    if(!trip) return;
-    const draft = ui.newItem[cat] || {};
-    if(!draft.text && !draft.amount) return;
 
+  // 分享功能
+  if (action === 'open-share-modal') { ui.shareModal = true; render(); }
+  if (action === 'close-share-modal') { ui.shareModal = false; render(); }
+  if (action === 'copy-share-url') {
+    const url = actionBtn.dataset.url;
+    await copyText(url);
+    showToast('已複製專屬分享連結！');
+  }
+  if (action === 'add-collaborator') {
+    const input = document.getElementById('collab-email-input');
+    const email = input ? input.value.trim().toLowerCase() : '';
+    if (!email) { showToast('請輸入 Email', true); return; }
+    
+    if (currentUser) {
+      const { error } = await supabaseClient
+        .from('trip_collaborators')
+        .insert({ trip_id: state.currentTripId, email: email });
+        
+      if (error) {
+        showToast('新增協作者失敗：' + error.message, true);
+      } else {
+        showToast('已新增協作者：' + email);
+        if (input) input.value = '';
+      }
+    } else {
+      showToast('請先登入 Google 才能新增協作者！', true);
+    }
+  }
+
+  // 分類與項目按鈕
+  if (action === 'toggle-item') {
+    const trip = state.trips.find(t=>t.id===state.currentTripId);
+    const it = trip?.categories[cat]?.items?.find(i=>i.id===item);
+    if (it) {
+      it.checked = !it.checked;
+      scheduleSave();
+      render();
+    }
+  }
+
+  if (action === 'delete-item') {
+    const trip = state.trips.find(t=>t.id===state.currentTripId);
+    if (trip && trip.categories[cat]) {
+      trip.categories[cat].items = trip.categories[cat].items.filter(i=>i.id!==item);
+      scheduleSave();
+      render();
+    }
+  }
+
+  if (action === 'add-item') {
+    const trip = state.trips.find(t=>t.id===state.currentTripId);
+    const draft = ui.newItem[cat] || {};
+    if (!draft.text && !draft.amount) { showToast('請填寫內容', true); return; }
+    
     const newItemObj = {
       id: uid(),
       text: draft.text || '',
@@ -1829,124 +1824,91 @@ app.addEventListener('click', async (e)=>{
       note: '',
       link: '',
       day: draft.day || '',
+      date: draft.date || '',
       amount: draft.amount || '',
       currency: draft.currency || '',
       category: draft.category || '',
-      payment: draft.payment || '',
-      date: draft.date || ''
+      payment: draft.payment || ''
     };
-
-    if(!trip.categories[cat]) trip.categories[cat] = { items: [] };
+    
     trip.categories[cat].items.push(newItemObj);
-
     ui.newItem[cat] = {};
     scheduleSave();
     render();
   }
-  else if(action === 'delete-item'){
-    const cat = el.dataset.cat;
-    const id = el.dataset.item;
-    const trip = state.trips.find(t=>t.id===state.currentTripId);
-    if(!trip || !trip.categories[cat]) return;
 
-    trip.categories[cat].items = trip.categories[cat].items.filter(i=>i.id!==id);
-    scheduleSave();
+  if (action === 'toggle-expand') {
+    const key = cat + '|' + item;
+    if (ui.expanded.has(key)) ui.expanded.delete(key);
+    else ui.expanded.add(key);
     render();
   }
-  else if(action === 'bulk-add'){
-    const cat = el.dataset.cat;
+
+  if (action === 'toggle-bulk') {
+    if (ui.bulkOpen.has(cat)) ui.bulkOpen.delete(cat);
+    else ui.bulkOpen.add(cat);
+    render();
+  }
+
+  if (action === 'bulk-add') {
     const trip = state.trips.find(t=>t.id===state.currentTripId);
-    if(!trip) return;
+    const text = ui.bulkDraft[cat] || '';
+    const lines = text.split('\n').map(l=>l.trim()).filter(Boolean);
+    
+    if (lines.length === 0) { showToast('沒有可加入的內容', true); return; }
 
-    const rawText = ui.bulkDraft[cat] || '';
-    if(!rawText.trim()) return;
-
-    const lines = rawText.split('\n');
-    let inheritedDate = '';
-    let inheritedDay = '';
-    const newItems = [];
-
+    let count = 0;
+    let currentDay = '';
+    
     lines.forEach(line => {
-      const trimmed = line.trim();
-      if(!trimmed) return;
-
-      const dateMatch = matchWholeDate(trimmed, trip);
-      if(dateMatch){
-        inheritedDate = dateMatch;
-        return;
-      }
-
-      const dayMatch = matchDayHeader(trimmed);
-      if(dayMatch){
-        inheritedDay = dayMatch;
-        return;
-      }
-
-      if(cat === 'expenses'){
-        const parsed = parseExpenseLine(trimmed, trip, inheritedDate);
-        if(parsed) newItems.push(parsed);
-      } else if(cat === 'routePlanning'){
-        newItems.push({
-          id: uid(),
-          text: trimmed,
-          checked: false,
-          note: '',
-          link: '',
-          day: inheritedDay,
-          amount: '',
-          currency: '',
-          category: '',
-          payment: '',
-          date: ''
-        });
+      if (cat === 'expenses') {
+        const parsed = parseExpenseLine(line, trip, '');
+        if (parsed) { trip.categories[cat].items.push(parsed); count++; }
       } else {
-        newItems.push({
+        if (cat === 'itinerary' && /^day\s*\d+/i.test(line)) {
+          currentDay = line;
+          return;
+        }
+        trip.categories[cat].items.push({
           id: uid(),
-          text: trimmed,
+          text: line,
           checked: false,
           note: '',
           link: '',
-          day: '',
-          amount: '',
-          currency: '',
-          category: '',
-          payment: '',
-          date: ''
+          day: currentDay
         });
+        count++;
       }
     });
 
-    if(newItems.length > 0){
-      if(!trip.categories[cat]) trip.categories[cat] = { items: [] };
-      trip.categories[cat].items.push(...newItems);
-      ui.bulkDraft[cat] = '';
-      ui.bulkOpen.delete(cat);
-      scheduleSave();
-      render();
-      showToast(`已成功整批加入 ${newItems.length} 筆資料！`);
-    }
+    ui.bulkDraft[cat] = '';
+    ui.bulkOpen.delete(cat);
+    scheduleSave();
+    render();
+    showToast(`已成功加入 ${count} 筆項目！`);
   }
-  else if(action === 'modal-noop'){
-  }
-  else if(action === 'confirm-cancel'){
-    ui.confirm = null;
+
+  if (action === 'toggle-summary') {
+    if (ui.summaryOpen.has(cat)) ui.summaryOpen.delete(cat);
+    else ui.summaryOpen.add(cat);
     render();
   }
-  else if(action === 'confirm-choice'){
-    const idx = parseInt(el.dataset.idx, 10);
-    const choice = ui.confirm && ui.confirm.choices[idx];
+
+  if (action === 'confirm-choice') {
+    const idx = parseInt(actionBtn.dataset.idx, 10);
+    const choice = ui.confirm?.choices?.[idx];
     ui.confirm = null;
-    if(choice && choice.onClick) choice.onClick();
     render();
-    if(ui.toast){
-      clearTimeout(showToast._t);
-      showToast._t = setTimeout(()=>{ ui.toast = null; render(); }, 2600);
-    }
+    if (choice && choice.onClick) choice.onClick();
+  }
+
+  if (action === 'confirm-cancel') {
+    ui.confirm = null;
+    render();
   }
 });
 
-/* 頁面載入時讀取本地緩存 */
-state.trips = loadTrips();
+/* 初始載入渲染 */
 render();
 </script>
 </body>
