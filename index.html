@@ -121,13 +121,12 @@ input,textarea,select{font-family:inherit;}
 }
 .stub-progress{font-family:var(--mono);font-size:19px;font-weight:600;color:var(--teal);}
 .stub-label{font-size:10px;color:var(--ink-soft);letter-spacing:.05em;}
-.trip-delete, .trip-leave{
+.trip-delete{
   position:absolute;top:8px;right:8px;background:transparent;border:none;color:var(--ink-soft);
-  font-size:12px;padding:4px 6px;border-radius:6px;opacity:0;transition:opacity .15s;
+  font-size:13px;padding:4px 6px;border-radius:6px;opacity:0;transition:opacity .15s;
 }
-.trip-card:hover .trip-delete, .trip-card:hover .trip-leave{opacity:1;}
+.trip-card:hover .trip-delete{opacity:1;}
 .trip-delete:hover{color:var(--stamp);background:rgba(181,64,46,0.08);}
-.trip-leave:hover{color:var(--brass);background:rgba(169,131,46,0.12);}
 .drag-handle{
   position:absolute;bottom:6px;right:6px;font-size:17px;line-height:1;color:var(--ink-soft);
   padding:5px 7px;cursor:grab;touch-action:none;user-select:none;-webkit-user-select:none;border-radius:6px;
@@ -194,11 +193,10 @@ input,textarea,select{font-family:inherit;}
 .overall-progress{display:flex;flex-direction:column;align-items:flex-end;gap:2px;margin-left:auto;}
 .overall-pct{font-family:var(--mono);font-size:22px;font-weight:600;color:var(--teal);}
 .overall-label{font-size:11px;color:var(--ink-soft);}
-.trip-delete-lg, .trip-leave-lg{
+.trip-delete-lg{
   background:none;border:none;color:var(--ink-soft);font-size:12px;padding:6px 8px;border-radius:6px;
 }
 .trip-delete-lg:hover{color:var(--stamp);background:rgba(181,64,46,0.08);}
-.trip-leave-lg:hover{color:var(--brass);background:rgba(169,131,46,0.12);}
 
 /* ---------- Category cards ---------- */
 .cats-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:16px;}
@@ -618,20 +616,10 @@ async function signOut() {
 
   currentUser = null;
   isSyncing = false;
-
-  // 1. 清空前端本地 State 狀態
-  state.trips = [];
-  state.currentTripId = null;
-  state.view = 'list';
-
-  // 2. 清除 LocalStorage
-  localStorage.removeItem(STORAGE_KEY);
-
   render();
-  showToast('已安全登出並完全清空本地資料');
+  showToast('已安全登出');
 }
 
-/* 需求 1：啟用 Realtime 即時監聽 */
 function subscribeRealtime() {
   if (!currentUser) return;
 
@@ -641,20 +629,19 @@ function subscribeRealtime() {
   }
 
   realtimeChannel = supabaseClient
-    .channel('trips_changes')
+    .channel('realtime_trips_changes_' + currentUser.id)
     .on(
       'postgres_changes',
-      { event: '*', schema: 'public', table: 'trips' },
-      async (payload) => {
+      { event: '*', schema: 'public', table: 'trips', filter: `user_id=eq.${currentUser.id}` },
+      async () => {
         if (isRemoteUpdating) return;
-        // 收到變更後自動更新 UI / State
         await syncFromSupabase(true);
       }
     )
     .on(
       'postgres_changes',
       { event: '*', schema: 'public', table: 'trip_collaborators' },
-      async (payload) => {
+      async () => {
         if (isRemoteUpdating) return;
         await syncFromSupabase(true);
       }
@@ -937,12 +924,6 @@ supabaseClient.auth.onAuthStateChange((event, session) => {
       realtimeChannel = null;
     }
 
-    // 當未登入（登出）時，重置/清空前端資料與 LocalStorage，還原為乾淨狀態
-    state.trips = [];
-    state.currentTripId = null;
-    state.view = 'list';
-    localStorage.removeItem(STORAGE_KEY);
-
     render();
   }
 });
@@ -1015,6 +996,139 @@ function groupSum(items, field){
   return Object.entries(map).sort((a,b)=>b[1]-a[1]);
 }
 
+function matchWholeDate(line, trip){
+  const s = line.trim();
+  const full = s.match(/^(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})$/);
+  if(full) return `${full[1]}-${full[2].padStart(2,'0')}-${full[3].padStart(2,'0')}`;
+  const short = s.match(/^(\d{1,2})[\/\-](\d{1,2})$/);
+  if(short){
+    let year = new Date().getFullYear();
+    if(trip && trip.startDate){
+      const y2 = parseInt(trip.startDate.slice(0,4), 10);
+      if(!isNaN(y2)) year = y2;
+    }
+    return `${year}-${short[1].padStart(2,'0')}-${short[2].padStart(2,'0')}`;
+  }
+  return null;
+}
+function matchDayHeader(line){
+  const s = line.trim();
+  const m1 = s.match(/^day\s*[:\.]?\s*(\d+)$/i);
+  if(m1) return 'Day ' + m1[1];
+  const m2 = s.match(/^第\s*(\d+)\s*天$/);
+  if(m2) return 'Day ' + m2[1];
+  return null;
+}
+
+function parseExpenseLine(line, trip, inheritedDate){
+  const raw = line.trim();
+  if(!raw) return null;
+
+  const iFull = raw.indexOf('：');
+  const iHalf = raw.indexOf(':');
+  const colonIdx = iFull===-1 ? iHalf : (iHalf===-1 ? iFull : Math.min(iFull, iHalf));
+
+  if(colonIdx === -1){
+    return parseExpenseLineLegacy(raw, trip, inheritedDate);
+  }
+
+  const item = { id: uid(), text:'', checked:false, note:'', link:'', date: inheritedDate||'', amount:'', currency:'', category:'', payment:'' };
+
+  const leftPart = raw.slice(0, colonIdx).trim();
+  let rightPart = raw.slice(colonIdx + 1).trim();
+
+  const leftTokens = leftPart.split(/\s+/).filter(Boolean);
+  const dateFull = leftTokens[0] && leftTokens[0].match(/^(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})$/);
+  const dateShort = leftTokens[0] && leftTokens[0].match(/^(\d{1,2})[\/\-](\d{1,2})$/);
+  if(dateFull){
+    item.date = `${dateFull[1]}-${dateFull[2].padStart(2,'0')}-${dateFull[3].padStart(2,'0')}`;
+    leftTokens.shift();
+  } else if(dateShort){
+    let year = new Date().getFullYear();
+    if(trip && trip.startDate){
+      const y2 = parseInt(trip.startDate.slice(0,4), 10);
+      if(!isNaN(y2)) year = y2;
+    }
+    item.date = `${year}-${dateShort[1].padStart(2,'0')}-${dateShort[2].padStart(2,'0')}`;
+    leftTokens.shift();
+  }
+  if(leftTokens.length){
+    item.category = leftTokens.shift();
+  }
+  item.text = leftTokens.join(' ');
+
+  const payMatch = rightPart.match(/[（(]([^）)]*)[）)]/);
+  if(payMatch){
+    item.payment = payMatch[1].trim();
+    rightPart = (rightPart.slice(0, payMatch.index) + rightPart.slice(payMatch.index + payMatch[0].length)).trim();
+  }
+  const rightTokens = rightPart.split(/\s+/).filter(Boolean);
+  const amtIdx = rightTokens.findIndex(t => /^\d{1,3}(,\d{3})*(\.\d+)?$/.test(t) || /^\d+(\.\d+)?$/.test(t));
+  if(amtIdx !== -1){
+    item.amount = rightTokens[amtIdx].replace(/,/g, '');
+    rightTokens.splice(amtIdx, 1);
+  }
+  const curIdx = rightTokens.findIndex(t => /^[A-Za-z]{2,5}$/.test(t));
+  if(curIdx !== -1){
+    item.currency = rightTokens[curIdx].toUpperCase();
+    rightTokens.splice(curIdx, 1);
+  }
+  if(rightTokens.length && !item.payment){
+    item.payment = rightTokens.join(' ');
+  }
+
+  if(!item.text && !item.amount) return null;
+  return item;
+}
+
+function parseExpenseLineLegacy(line, trip, inheritedDate){
+  const tokens = line.trim().split(/\s+/).filter(Boolean);
+  if(tokens.length === 0) return null;
+
+  const item = { id: uid(), text:'', checked:false, note:'', link:'', date: inheritedDate||'', amount:'', currency:'', category:'', payment:'' };
+
+  const dateFull = tokens[0] && tokens[0].match(/^(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})$/);
+  const dateShort = tokens[0] && tokens[0].match(/^(\d{1,2})[\/\-](\d{1,2})$/);
+  if(dateFull){
+    item.date = `${dateFull[1]}-${dateFull[2].padStart(2,'0')}-${dateFull[3].padStart(2,'0')}`;
+    tokens.shift();
+  } else if(dateShort){
+    let year = new Date().getFullYear();
+    if(trip && trip.startDate){
+      const y2 = parseInt(trip.startDate.slice(0,4), 10);
+      if(!isNaN(y2)) year = y2;
+    }
+    item.date = `${year}-${dateShort[1].padStart(2,'0')}-${dateShort[2].padStart(2,'0')}`;
+    tokens.shift();
+  }
+
+  if(tokens.length && EXPENSE_CATS.includes(tokens[0])){
+    item.category = tokens.shift();
+  }
+
+  const amtIdx = tokens.findIndex(t => /^\d{1,3}(,\d{3})*(\.\d+)?$/.test(t) || /^\d+(\.\d+)?$/.test(t));
+  if(amtIdx !== -1){
+    item.amount = tokens[amtIdx].replace(/,/g, '');
+    tokens.splice(amtIdx, 1);
+  }
+
+  const curIdx = tokens.findIndex(t => /^[A-Za-z]{2,5}$/.test(t));
+  if(curIdx !== -1){
+    item.currency = tokens[curIdx].toUpperCase();
+    tokens.splice(curIdx, 1);
+  }
+
+  if(tokens.length > 1){
+    item.payment = tokens[tokens.length - 1];
+    item.text = tokens.slice(0, -1).join(' ');
+  } else if(tokens.length === 1){
+    item.text = tokens[0];
+  }
+
+  if(!item.text && !item.amount) return null;
+  return item;
+}
+
 function fmtDateRange(trip){
   if(!trip.startDate && !trip.endDate) return '尚未設定日期';
   const s = trip.startDate || '?';
@@ -1057,18 +1171,12 @@ function renderAuthBar() {
 function renderListView(){
   const cards = state.trips.map(t=>{
     const pct = overallProgress(t);
-    /* 需求 2：判斷登入者是建立者還是協作者 */
     const isOwner = !t.user_id || (currentUser && t.user_id === currentUser.id);
-    
-    const actionBtnHtml = isOwner 
-      ? `<button class="trip-delete" data-action="delete-trip" data-id="${t.id}" title="刪除這趟行程">✕</button>`
-      : `<button class="trip-leave" data-action="leave-trip" data-id="${t.id}" title="退出協作">退出</button>`;
-
     return `
     <div class="trip-card" data-action="open-trip" data-id="${t.id}">
       <div class="tag-hole"></div>
       <span class="drag-handle" data-action="noop" title="按住拖曳調整順序">⠿</span>
-      ${actionBtnHtml}
+      ${isOwner ? `<button class="trip-delete" data-action="delete-trip" data-id="${t.id}" title="刪除這趟行程">✕</button>` : ''}
       <div class="trip-card-main">
         <div class="trip-dest">${escapeHtml(t.destination) || '未命名行程'}</div>
         <div class="trip-dates">${escapeHtml(fmtDateRange(t))}</div>
@@ -1308,12 +1416,7 @@ function renderTripView(){
   const trip = state.trips.find(t=>t.id===state.currentTripId);
   if(!trip){ state.view='list'; return renderListView(); }
   const pct = overallProgress(trip);
-
-  /* 需求 2：內頁防護，只有 Owner 顯示刪除，Collaborator 顯示退出協作 */
   const isOwner = !trip.user_id || (currentUser && trip.user_id === currentUser.id);
-  const actionBtnHtml = isOwner 
-    ? `<button class="trip-delete-lg" data-action="delete-trip" data-id="${trip.id}">刪除此行程</button>`
-    : `<button class="trip-leave-lg" data-action="leave-trip" data-id="${trip.id}">退出協作</button>`;
 
   const catsHtml = CATS.map(c=>renderCategoryCard(trip, c)).join('');
 
@@ -1327,7 +1430,7 @@ function renderTripView(){
         <button class="back-btn" data-action="back">← 返回所有行程</button>
         <div class="th-top-right">
           <button class="modal-btn" data-action="open-share-modal">🔗 分享與協作</button>
-          ${actionBtnHtml}
+          ${isOwner ? `<button class="trip-delete-lg" data-action="delete-trip" data-id="${trip.id}">刪除此行程</button>` : ''}
         </div>
       </div>
       <div class="th-row">
@@ -1626,7 +1729,7 @@ app.addEventListener('click', async (e)=>{
   }
   else if(action === 'add-collaborator'){
     const input = document.getElementById('collab-email-input');
-    const email = input ? input.value.trim().toLowerCase() : '';
+    const email = input ? input.value.trim() : '';
     if(!email) { showToast('請輸入 Email', true); return; }
     
     const { error } = await supabaseClient.from('trip_collaborators').insert({
@@ -1665,49 +1768,25 @@ app.addEventListener('click', async (e)=>{
     const id = el.dataset.id;
     const t = state.trips.find(x=>x.id===id);
     if(!t) return;
+
+    // 嚴格檢測 Owner 權限
+    const isOwner = !t.user_id || (currentUser && t.user_id === currentUser.id);
+    if (!isOwner) {
+      showToast('僅有此行程的建立者有權限刪除行程！', true);
+      return;
+    }
+
     ui.confirm = {
       message: '確定要刪除「' + (t.destination||'未命名行程') + '」這趟行程嗎？此動作無法復原。',
       choices: [
         {label:'取消'},
         {label:'刪除', danger:true, onClick: async ()=>{
           state.trips = state.trips.filter(x=>x.id!==id);
-          localStorage.setItem(STORAGE_KEY, JSON.stringify(state.trips));
+          scheduleSave();
           if(currentUser) {
-            const { error } = await supabaseClient.from('trips').delete().eq('id', id);
-            if(error) showToast('刪除失敗：' + error.message, true);
+            await supabaseClient.from('trips').delete().eq('id', id);
           }
           if(state.currentTripId===id){ state.currentTripId=null; state.view='list'; }
-          render();
-        }},
-      ],
-    };
-    render();
-  }
-  /* 需求 2：協作者退出行程邏輯 */
-  else if(action === 'leave-trip'){
-    e.stopPropagation();
-    const id = el.dataset.id;
-    const t = state.trips.find(x=>x.id===id);
-    if(!t) return;
-    ui.confirm = {
-      message: '確定要退出「' + (t.destination||'未命名行程') + '」的協作嗎？退出後將無法繼續檢視或編輯。',
-      choices: [
-        {label:'取消'},
-        {label:'退出協作', primary:true, onClick: async ()=>{
-          state.trips = state.trips.filter(x=>x.id!==id);
-          localStorage.setItem(STORAGE_KEY, JSON.stringify(state.trips));
-          if(currentUser && currentUser.email) {
-            const { error } = await supabaseClient
-              .from('trip_collaborators')
-              .delete()
-              .eq('trip_id', id)
-              .eq('email', currentUser.email.toLowerCase());
-            
-            if(error) showToast('退出協作失敗：' + error.message, true);
-          }
-          if(state.currentTripId===id){ state.currentTripId=null; state.view='list'; }
-          render();
-          showToast('已成功退出該行程之協作');
         }},
       ],
     };
@@ -1800,9 +1879,59 @@ app.addEventListener('click', async (e)=>{
     scheduleSave();
     render();
   }
+  else if(action === 'bulk-add'){
+    const trip = state.trips.find(t=>t.id===state.currentTripId);
+    const cat = el.dataset.cat;
+    const raw = ui.bulkDraft[cat] || '';
+    const lines = raw.split('\n').map(s=>s.trim()).filter(Boolean);
+    if(cat === 'expenses'){
+      let currentDate = '';
+      let parsedCount = 0;
+      lines.forEach(line=>{
+        const headerDate = matchWholeDate(line, trip);
+        if(headerDate){ currentDate = headerDate; return; }
+        const item = parseExpenseLine(line, trip, currentDate);
+        if(item){ trip.categories.expenses.items.push(item); parsedCount++; }
+      });
+      showToast(`已新增 ${parsedCount} 筆花費`);
+    } else if(cat === 'routePlanning'){
+      let currentDay = '';
+      lines.forEach(line=>{
+        const headerDay = matchDayHeader(line);
+        if(headerDay){ currentDay = headerDay; return; }
+        trip.categories[cat].items.push({ id: uid(), text: line, checked: false, note: '', link: '', day: currentDay });
+      });
+      showToast(`已新增 ${lines.length} 個行程`);
+    } else if(cat === 'exchange'){
+      lines.forEach(line=>{
+        const tokens = line.split(/\s+/);
+        let amt = '', cur = '', txt = line;
+        if(tokens.length >= 2){
+          const possibleAmt = tokens[tokens.length - 2];
+          const possibleCur = tokens[tokens.length - 1];
+          if(!isNaN(parseFloat(possibleAmt))){
+            amt = possibleAmt;
+            cur = possibleCur.toUpperCase();
+            txt = tokens.slice(0, -2).join(' ');
+          }
+        }
+        trip.categories[cat].items.push({ id: uid(), text: txt, checked: false, note: '', link: '', amount: amt, currency: cur });
+      });
+      showToast(`已新增 ${lines.length} 個項目`);
+    } else {
+      lines.forEach(line=>{
+        trip.categories[cat].items.push({ id: uid(), text: line, checked: false, note: '', link: '' });
+      });
+      showToast(`已新增 ${lines.length} 個項目`);
+    }
+    ui.bulkDraft[cat] = '';
+    ui.bulkOpen.delete(cat);
+    scheduleSave();
+    render();
+  }
 });
 
-/* 初始化載入 */
+/* 初始化載入本地資料 */
 state.trips = loadTrips();
 render();
 </script>
