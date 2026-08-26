@@ -618,8 +618,17 @@ async function signOut() {
 
   currentUser = null;
   isSyncing = false;
+
+  // 1. 清空前端本地 State 狀態
+  state.trips = [];
+  state.currentTripId = null;
+  state.view = 'list';
+
+  // 2. 清除 LocalStorage
+  localStorage.removeItem(STORAGE_KEY);
+
   render();
-  showToast('已安全登出');
+  showToast('已安全登出並完全清空本地資料');
 }
 
 /* 需求 1：啟用 Realtime 即時監聽 */
@@ -927,6 +936,12 @@ supabaseClient.auth.onAuthStateChange((event, session) => {
       supabaseClient.removeChannel(realtimeChannel);
       realtimeChannel = null;
     }
+
+    // 當未登入（登出）時，重置/清空前端資料與 LocalStorage，還原為乾淨狀態
+    state.trips = [];
+    state.currentTripId = null;
+    state.view = 'list';
+    localStorage.removeItem(STORAGE_KEY);
 
     render();
   }
