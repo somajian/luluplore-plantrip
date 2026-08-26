@@ -127,6 +127,9 @@ input,textarea,select{font-family:inherit;}
 }
 .trip-card:hover .trip-delete{opacity:1;}
 .trip-delete:hover{color:var(--stamp);background:rgba(181,64,46,0.08);}
+@media (max-width: 768px) {
+  .trip-delete { opacity: 1; }
+}
 .drag-handle{
   position:absolute;bottom:6px;right:6px;font-size:17px;line-height:1;color:var(--ink-soft);
   padding:5px 7px;cursor:grab;touch-action:none;user-select:none;-webkit-user-select:none;border-radius:6px;
@@ -663,19 +666,36 @@ async function syncToSupabase(tripsToSave = state.trips) {
   try {
     const now = new Date().toISOString();
 
-    const payload = tripsToSave.map(trip => {
+    const payload = [];
+    for (const trip of tripsToSave) {
       if (!trip.updated_at) trip.updated_at = now;
 
-      return {
-        id: trip.id,
-        user_id: trip.user_id || currentUser.id,
-        destination: trip.destination || '未命名行程',
-        start_date: trip.startDate || null,
-        end_date: trip.endDate || null,
-        categories: trip.categories || emptyCategories(),
-        updated_at: trip.updated_at
-      };
-    });
+      // 如果不是建立者，先確認 role 是否為 owner
+      let isOwner = !trip.user_id || trip.user_id === currentUser.id;
+      if (!isOwner) {
+        const { data: collab } = await supabaseClient
+          .from('trip_collaborators')
+          .select('role')
+          .eq('trip_id', trip.id)
+          .eq('user_id', currentUser.id)
+          .single();
+        if (collab && collab.role === 'owner') {
+          isOwner = true;
+        }
+      }
+
+      if (isOwner) {
+        payload.push({
+          id: trip.id,
+          user_id: trip.user_id || currentUser.id,
+          destination: trip.destination || '未命名行程',
+          start_date: trip.startDate || null,
+          end_date: trip.endDate || null,
+          categories: trip.categories || emptyCategories(),
+          updated_at: trip.updated_at
+        });
+      }
+    }
 
     if (payload.length === 0) return true;
 
@@ -736,15 +756,17 @@ async function syncFromSupabase(isRealtimeTrigger = false) {
 
     const { data: collabData, error: collabErr } = await supabaseClient
       .from('trip_collaborators')
-      .select('trip_id')
-      .eq('email', (currentUser.email || '').toLowerCase());
+      .select('trip_id, role')
+      .or(`email.eq.${(currentUser.email || '').toLowerCase()},user_id.eq.${currentUser.id}`);
 
     if (collabErr) {
       console.warn('Fetch collaborators error:', collabErr);
     }
 
     let collabTrips = [];
+    const collabRoleMap = new Map();
     if (collabData && collabData.length > 0) {
+      collabData.forEach(c => collabRoleMap.set(c.trip_id, c.role));
       const tripIds = collabData.map(c => c.trip_id);
 
       const { data: shared, error: sharedErr } = await supabaseClient
@@ -766,7 +788,8 @@ async function syncFromSupabase(isRealtimeTrigger = false) {
       startDate: t.start_date || '',
       endDate: t.end_date || '',
       categories: ensureCategories(t.categories),
-      updated_at: t.updated_at || null
+      updated_at: t.updated_at || null,
+      role: 'owner'
     }));
 
     const remoteShared = collabTrips.map(t => ({
@@ -776,7 +799,8 @@ async function syncFromSupabase(isRealtimeTrigger = false) {
       startDate: t.start_date || '',
       endDate: t.end_date || '',
       categories: ensureCategories(t.categories),
-      updated_at: t.updated_at || null
+      updated_at: t.updated_at || null,
+      role: collabRoleMap.get(t.id) || (t.user_id === currentUser.id ? 'owner' : 'editor')
     }));
 
     const localMap = new Map((state.trips || []).map(t => [t.id, t]));
@@ -792,9 +816,9 @@ async function syncFromSupabase(isRealtimeTrigger = false) {
       const localTime = localTrip.updated_at ? new Date(localTrip.updated_at).getTime() : 0;
       const remoteTime = remoteTrip.updated_at ? new Date(remoteTrip.updated_at).getTime() : 0;
       if (remoteTime >= localTime) {
-        mergedMap.set(remoteTrip.id, remoteTrip);
+        mergedMap.set(remoteTrip.id, { ...remoteTrip, role: 'owner' });
       } else {
-        mergedMap.set(remoteTrip.id, localTrip);
+        mergedMap.set(remoteTrip.id, { ...localTrip, role: 'owner' });
       }
     });
 
@@ -815,6 +839,9 @@ async function syncFromSupabase(isRealtimeTrigger = false) {
     remoteShared.forEach(sharedTrip => {
       if (!mergedMap.has(sharedTrip.id)) {
         mergedMap.set(sharedTrip.id, sharedTrip);
+      } else {
+        const existing = mergedMap.get(sharedTrip.id);
+        existing.role = sharedTrip.role;
       }
     });
 
@@ -859,6 +886,18 @@ supabaseClient.auth.onAuthStateChange((event, session) => {
         const sharedTripId = urlParams.get('trip_id');
 
         if (sharedTripId) {
+          // 加入協作者表
+          if (currentUser.email) {
+            await supabaseClient
+              .from('trip_collaborators')
+              .upsert({
+                trip_id: sharedTripId,
+                user_id: currentUser.id,
+                email: currentUser.email.toLowerCase(),
+                role: 'editor'
+              }, { onConflict: 'trip_id,email' });
+          }
+
           const { data: trip, error } = await supabaseClient
             .from('trips')
             .select('*')
@@ -873,7 +912,8 @@ supabaseClient.auth.onAuthStateChange((event, session) => {
               startDate: trip.start_date || '',
               endDate: trip.end_date || '',
               categories: ensureCategories(trip.categories),
-              updated_at: trip.updated_at || null
+              updated_at: trip.updated_at || null,
+              role: trip.user_id === currentUser.id ? 'owner' : 'editor'
             };
 
             const exists = state.trips.some(t => t.id === formatted.id);
@@ -995,7 +1035,7 @@ function parseExpenseLine(line, trip, inheritedDate){
   const dateFull = leftTokens[0] && leftTokens[0].match(/^(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})$/);
   const dateShort = leftTokens[0] && leftTokens[0].match(/^(\d{1,2})[\/\-](\d{1,2})$/);
   if(dateFull){
-    item.date = `${dateFull[1]}-${dateFull[2].padStart(2,'0')}-${dateFull[3].padStart(2,'0')}`;
+    item.date = `${dateFull[1]}-${dateShort[2].padStart(2,'0')}-${dateFull[3].padStart(2,'0')}`;
     leftTokens.shift();
   } else if(dateShort){
     let year = new Date().getFullYear();
@@ -1044,7 +1084,7 @@ function parseExpenseLineLegacy(line, trip, inheritedDate){
   const dateFull = tokens[0] && tokens[0].match(/^(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})$/);
   const dateShort = tokens[0] && tokens[0].match(/^(\d{1,2})[\/\-](\d{1,2})$/);
   if(dateFull){
-    item.date = `${dateFull[1]}-${dateFull[2].padStart(2,'0')}-${dateFull[3].padStart(2,'0')}`;
+    item.date = `${dateFull[1]}-${dateShort[2].padStart(2,'0')}-${dateFull[3].padStart(2,'0')}`;
     tokens.shift();
   } else if(dateShort){
     let year = new Date().getFullYear();
@@ -1125,12 +1165,15 @@ function renderAuthBar() {
 function renderListView(){
   const cards = state.trips.map(t=>{
     const pct = overallProgress(t);
-    const isOwner = !t.user_id || (currentUser && t.user_id === currentUser.id);
+    const isOwner = t.role ? t.role === 'owner' : (!t.user_id || (currentUser && t.user_id === currentUser.id));
     return `
     <div class="trip-card" data-action="open-trip" data-id="${t.id}">
       <div class="tag-hole"></div>
       <span class="drag-handle" data-action="noop" title="按住拖曳調整順序">⠿</span>
-      ${isOwner ? `<button class="trip-delete" data-action="delete-trip" data-id="${t.id}" title="刪除這趟行程">✕</button>` : ''}
+      ${isOwner 
+        ? `<button class="trip-delete" data-action="delete-trip" data-id="${t.id}" title="刪除這趟行程">✕</button>`
+        : `<button class="trip-delete" data-action="leave-collaboration" data-id="${t.id}" title="退出協作">✕</button>`
+      }
       <div class="trip-card-main">
         <div class="trip-dest">${escapeHtml(t.destination) || '未命名行程'}</div>
         <div class="trip-dates">${escapeHtml(fmtDateRange(t))}</div>
@@ -1371,8 +1414,8 @@ function renderTripView(){
   if(!trip){ state.view='list'; return renderListView(); }
   const pct = overallProgress(trip);
   
-  // 核心權限修正：判斷當前使用者是否為建立者 (Owner)
-  const isOwner = !trip.user_id || (currentUser && trip.user_id === currentUser.id);
+  // 核心權限修正：優先讀取 role 欄位判斷當前使用者是否為 Owner
+  const isOwner = trip.role ? trip.role === 'owner' : (!trip.user_id || (currentUser && trip.user_id === currentUser.id));
 
   const catsHtml = CATS.map(c=>renderCategoryCard(trip, c)).join('');
 
@@ -1697,8 +1740,20 @@ app.addEventListener('click', async (e)=>{
       startDate: ui.draft.start,
       endDate: ui.draft.end,
       categories: emptyCategories(),
-      updated_at: new Date().toISOString()
+      updated_at: new Date().toISOString(),
+      role: 'owner'
     };
+    
+    // 如果已登入，自動將建立者寫入 trip_collaborators (role: 'owner')
+    if (currentUser && currentUser.email) {
+      await supabaseClient.from('trip_collaborators').upsert({
+        trip_id: newTrip.id,
+        user_id: currentUser.id,
+        email: currentUser.email.toLowerCase(),
+        role: 'owner'
+      }, { onConflict: 'trip_id,email' });
+    }
+
     state.trips.unshift(newTrip);
     ui.draft = {destination:'', start:'', end:''};
     scheduleSave();
@@ -1721,6 +1776,7 @@ app.addEventListener('click', async (e)=>{
           
           if (currentUser) {
             await supabaseClient.from('trips').delete().eq('id', deleteId);
+            await supabaseClient.from('trip_collaborators').delete().eq('trip_id', deleteId);
           }
           
           if (state.currentTripId === deleteId) {
@@ -1737,6 +1793,7 @@ app.addEventListener('click', async (e)=>{
 
   // 協作者：退出協作
   if (action === 'leave-collaboration') {
+    e.stopPropagation();
     ui.confirm = {
       message: '確定要退出此行程的協作嗎？退出後您將無法繼續檢視與編輯此行程。',
       choices: [
@@ -1750,11 +1807,13 @@ app.addEventListener('click', async (e)=>{
               .from('trip_collaborators')
               .delete()
               .eq('trip_id', tripId)
-              .eq('email', currentUser.email.toLowerCase());
+              .or(`email.eq.${currentUser.email.toLowerCase()},user_id.eq.${currentUser.id}`);
           }
           
-          state.view = 'list';
-          state.currentTripId = null;
+          if (state.currentTripId === tripId) {
+            state.view = 'list';
+            state.currentTripId = null;
+          }
           scheduleSave();
           showToast('您已成功退出協作');
         }}
@@ -1779,7 +1838,7 @@ app.addEventListener('click', async (e)=>{
     if (currentUser) {
       const { error } = await supabaseClient
         .from('trip_collaborators')
-        .insert({ trip_id: state.currentTripId, email: email });
+        .insert({ trip_id: state.currentTripId, email: email, role: 'editor' });
         
       if (error) {
         showToast('新增協作者失敗：' + error.message, true);
@@ -1852,40 +1911,68 @@ app.addEventListener('click', async (e)=>{
 
   if (action === 'bulk-add') {
     const trip = state.trips.find(t=>t.id===state.currentTripId);
-    const text = ui.bulkDraft[cat] || '';
-    const lines = text.split('\n').map(l=>l.trim()).filter(Boolean);
-    
-    if (lines.length === 0) { showToast('沒有可加入的內容', true); return; }
+    const text = (ui.bulkDraft[cat] || '').trim();
+    if (!text) { showToast('請輸入整批內容', true); return; }
 
-    let count = 0;
+    const lines = text.split('\n');
+    let addedCount = 0;
     let currentDay = '';
-    
+    let currentExpenseDate = '';
+
+    const catDef = CATS.find(c => c.id === cat);
+
     lines.forEach(line => {
-      if (cat === 'expenses') {
-        const parsed = parseExpenseLine(line, trip, '');
-        if (parsed) { trip.categories[cat].items.push(parsed); count++; }
-      } else {
-        if (cat === 'itinerary' && /^day\s*\d+/i.test(line)) {
-          currentDay = line;
+      const raw = line.trim();
+      if (!raw) return;
+
+      if (catDef && catDef.type === 'expense') {
+        const mFull = raw.match(/^(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})$/);
+        const mShort = raw.match(/^(\d{1,2})[\/\-](\d{1,2})$/);
+        if (mFull) {
+          currentExpenseDate = `${mFull[1]}-${mFull[2].padStart(2,'0')}-${mFull[3].padStart(2,'0')}`;
+          return;
+        } else if (mShort) {
+          let year = new Date().getFullYear();
+          if (trip && trip.startDate) {
+            const y2 = parseInt(trip.startDate.slice(0,4), 10);
+            if (!isNaN(y2)) year = y2;
+          }
+          currentExpenseDate = `${year}-${mShort[1].padStart(2,'0')}-${mShort[2].padStart(2,'0')}`;
           return;
         }
-        trip.categories[cat].items.push({
-          id: uid(),
-          text: line,
-          checked: false,
-          note: '',
-          link: '',
-          day: currentDay
-        });
-        count++;
+
+        const parsedExp = parseExpenseLine(raw, trip, currentExpenseDate);
+        if (parsedExp) {
+          trip.categories[cat].items.push(parsedExp);
+          addedCount++;
+        }
+        return;
       }
+
+      if (catDef && catDef.type === 'itinerary') {
+        const dayMatch = raw.match(/^(Day\s*\d+|\d+)/i);
+        if (dayMatch && raw.length <= 10) {
+          currentDay = dayMatch[1];
+          return;
+        }
+      }
+
+      trip.categories[cat].items.push({
+        id: uid(),
+        text: raw,
+        checked: false,
+        note: '',
+        link: '',
+        day: currentDay
+      });
+      addedCount++;
     });
 
     ui.bulkDraft[cat] = '';
     ui.bulkOpen.delete(cat);
     scheduleSave();
     render();
-    showToast(`已成功加入 ${count} 筆項目！`);
+    showToast(`已成功加入 ${addedCount} 筆項目！`);
   }
 
   if (action === 'toggle-summary') {
@@ -1896,10 +1983,10 @@ app.addEventListener('click', async (e)=>{
 
   if (action === 'confirm-choice') {
     const idx = parseInt(actionBtn.dataset.idx, 10);
-    const choice = ui.confirm?.choices?.[idx];
+    const choice = ui.confirm?.choices[idx];
     ui.confirm = null;
-    render();
     if (choice && choice.onClick) choice.onClick();
+    else render();
   }
 
   if (action === 'confirm-cancel') {
@@ -1908,7 +1995,7 @@ app.addEventListener('click', async (e)=>{
   }
 });
 
-/* 初始載入渲染 */
+/* 初始化 */
 render();
 </script>
 </body>
