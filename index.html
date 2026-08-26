@@ -1430,7 +1430,7 @@ function renderTripView(){
         <button class="back-btn" data-action="back">← 返回所有行程</button>
         <div class="th-top-right">
           <button class="modal-btn" data-action="open-share-modal">🔗 分享與協作</button>
-          ${isOwner ? `<button class="trip-delete-lg" data-action="delete-trip" data-id="${trip.id}">刪除此行程</button>` : ''}
+          ${isOwner ? `<button class="trip-delete-lg" data-action="delete-trip" data-id="${trip.id}">刪除此行程</button>` : `<button class="trip-delete-lg" data-action="leave-collaboration" data-id="${trip.id}">退出協作</button>`}
         </div>
       </div>
       <div class="th-row">
@@ -1792,64 +1792,33 @@ app.addEventListener('click', async (e)=>{
     };
     render();
   }
-  else if(action === 'modal-noop'){
-  }
-  else if(action === 'confirm-cancel'){
-    ui.confirm = null;
-    render();
-  }
-  else if(action === 'confirm-choice'){
-    const idx = parseInt(el.dataset.idx, 10);
-    const choice = ui.confirm && ui.confirm.choices[idx];
-    ui.confirm = null;
-    if(choice && choice.onClick) choice.onClick();
-    render();
-    if(ui.toast){
-      clearTimeout(showToast._t);
-      showToast._t = setTimeout(()=>{ ui.toast = null; render(); }, 2600);
-    }
-  }
-  else if(action === 'create-trip'){
-    const dest = ui.draft.destination.trim();
-    const trip = {
-      id: uid(),
-      user_id: currentUser ? currentUser.id : null,
-      destination: dest || '未命名行程',
-      startDate: ui.draft.start || '',
-      endDate: ui.draft.end || '',
-      categories: emptyCategories(),
+  else if(action === 'leave-collaboration'){
+    e.stopPropagation();
+    const id = el.dataset.id;
+    const t = state.trips.find(x=>x.id===id);
+    if(!t || !currentUser) return;
+
+    ui.confirm = {
+      message: '確定要退出「' + (t.destination||'未命名行程') + '」的協作嗎？退出後將不再顯示此行程。',
+      choices: [
+        {label:'取消'},
+        {label:'退出協作', danger:true, onClick: async ()=>{
+          state.trips = state.trips.filter(x=>x.id!==id);
+          scheduleSave();
+          await supabaseClient.from('trip_collaborators')
+            .delete()
+            .eq('trip_id', id)
+            .eq('email', (currentUser.email || '').toLowerCase());
+          if(state.currentTripId===id){ state.currentTripId=null; state.view='list'; }
+        }},
+      ],
     };
-    state.trips.push(trip);
-    ui.draft = {destination:'', start:'', end:''};
-    scheduleSave();
-    render();
-  }
-  else if(action === 'toggle-item'){
-    const trip = state.trips.find(t=>t.id===state.currentTripId);
-    const cat = el.dataset.cat, id = el.dataset.item;
-    const item = trip.categories[cat].items.find(i=>i.id===id);
-    item.checked = !item.checked;
-    scheduleSave();
-    render();
-  }
-  else if(action === 'toggle-expand'){
-    const key = el.dataset.cat + '|' + el.dataset.item;
-    if(ui.expanded.has(key)) ui.expanded.delete(key); else ui.expanded.add(key);
-    render();
-  }
-  else if(action === 'toggle-bulk'){
-    const cat = el.dataset.cat;
-    if(ui.bulkOpen.has(cat)) ui.bulkOpen.delete(cat); else ui.bulkOpen.add(cat);
-    render();
-  }
-  else if(action === 'toggle-summary'){
-    const cat = el.dataset.cat;
-    if(ui.summaryOpen.has(cat)) ui.summaryOpen.delete(cat); else ui.summaryOpen.add(cat);
     render();
   }
   else if(action === 'add-item'){
-    const trip = state.trips.find(t=>t.id===state.currentTripId);
     const cat = el.dataset.cat;
+    const trip = state.trips.find(t=>t.id===state.currentTripId);
+    if(!trip) return;
     const draft = ui.newItem[cat] || {};
     if(!draft.text && !draft.amount) return;
 
@@ -1867,71 +1836,116 @@ app.addEventListener('click', async (e)=>{
       date: draft.date || ''
     };
 
+    if(!trip.categories[cat]) trip.categories[cat] = { items: [] };
     trip.categories[cat].items.push(newItemObj);
+
     ui.newItem[cat] = {};
     scheduleSave();
     render();
   }
   else if(action === 'delete-item'){
+    const cat = el.dataset.cat;
+    const id = el.dataset.item;
     const trip = state.trips.find(t=>t.id===state.currentTripId);
-    const cat = el.dataset.cat, id = el.dataset.item;
+    if(!trip || !trip.categories[cat]) return;
+
     trip.categories[cat].items = trip.categories[cat].items.filter(i=>i.id!==id);
     scheduleSave();
     render();
   }
   else if(action === 'bulk-add'){
-    const trip = state.trips.find(t=>t.id===state.currentTripId);
     const cat = el.dataset.cat;
-    const raw = ui.bulkDraft[cat] || '';
-    const lines = raw.split('\n').map(s=>s.trim()).filter(Boolean);
-    if(cat === 'expenses'){
-      let currentDate = '';
-      let parsedCount = 0;
-      lines.forEach(line=>{
-        const headerDate = matchWholeDate(line, trip);
-        if(headerDate){ currentDate = headerDate; return; }
-        const item = parseExpenseLine(line, trip, currentDate);
-        if(item){ trip.categories.expenses.items.push(item); parsedCount++; }
-      });
-      showToast(`已新增 ${parsedCount} 筆花費`);
-    } else if(cat === 'routePlanning'){
-      let currentDay = '';
-      lines.forEach(line=>{
-        const headerDay = matchDayHeader(line);
-        if(headerDay){ currentDay = headerDay; return; }
-        trip.categories[cat].items.push({ id: uid(), text: line, checked: false, note: '', link: '', day: currentDay });
-      });
-      showToast(`已新增 ${lines.length} 個行程`);
-    } else if(cat === 'exchange'){
-      lines.forEach(line=>{
-        const tokens = line.split(/\s+/);
-        let amt = '', cur = '', txt = line;
-        if(tokens.length >= 2){
-          const possibleAmt = tokens[tokens.length - 2];
-          const possibleCur = tokens[tokens.length - 1];
-          if(!isNaN(parseFloat(possibleAmt))){
-            amt = possibleAmt;
-            cur = possibleCur.toUpperCase();
-            txt = tokens.slice(0, -2).join(' ');
-          }
-        }
-        trip.categories[cat].items.push({ id: uid(), text: txt, checked: false, note: '', link: '', amount: amt, currency: cur });
-      });
-      showToast(`已新增 ${lines.length} 個項目`);
-    } else {
-      lines.forEach(line=>{
-        trip.categories[cat].items.push({ id: uid(), text: line, checked: false, note: '', link: '' });
-      });
-      showToast(`已新增 ${lines.length} 個項目`);
+    const trip = state.trips.find(t=>t.id===state.currentTripId);
+    if(!trip) return;
+
+    const rawText = ui.bulkDraft[cat] || '';
+    if(!rawText.trim()) return;
+
+    const lines = rawText.split('\n');
+    let inheritedDate = '';
+    let inheritedDay = '';
+    const newItems = [];
+
+    lines.forEach(line => {
+      const trimmed = line.trim();
+      if(!trimmed) return;
+
+      const dateMatch = matchWholeDate(trimmed, trip);
+      if(dateMatch){
+        inheritedDate = dateMatch;
+        return;
+      }
+
+      const dayMatch = matchDayHeader(trimmed);
+      if(dayMatch){
+        inheritedDay = dayMatch;
+        return;
+      }
+
+      if(cat === 'expenses'){
+        const parsed = parseExpenseLine(trimmed, trip, inheritedDate);
+        if(parsed) newItems.push(parsed);
+      } else if(cat === 'routePlanning'){
+        newItems.push({
+          id: uid(),
+          text: trimmed,
+          checked: false,
+          note: '',
+          link: '',
+          day: inheritedDay,
+          amount: '',
+          currency: '',
+          category: '',
+          payment: '',
+          date: ''
+        });
+      } else {
+        newItems.push({
+          id: uid(),
+          text: trimmed,
+          checked: false,
+          note: '',
+          link: '',
+          day: '',
+          amount: '',
+          currency: '',
+          category: '',
+          payment: '',
+          date: ''
+        });
+      }
+    });
+
+    if(newItems.length > 0){
+      if(!trip.categories[cat]) trip.categories[cat] = { items: [] };
+      trip.categories[cat].items.push(...newItems);
+      ui.bulkDraft[cat] = '';
+      ui.bulkOpen.delete(cat);
+      scheduleSave();
+      render();
+      showToast(`已成功整批加入 ${newItems.length} 筆資料！`);
     }
-    ui.bulkDraft[cat] = '';
-    ui.bulkOpen.delete(cat);
-    scheduleSave();
+  }
+  else if(action === 'modal-noop'){
+  }
+  else if(action === 'confirm-cancel'){
+    ui.confirm = null;
     render();
+  }
+  else if(action === 'confirm-choice'){
+    const idx = parseInt(el.dataset.idx, 10);
+    const choice = ui.confirm && ui.confirm.choices[idx];
+    ui.confirm = null;
+    if(choice && choice.onClick) choice.onClick();
+    render();
+    if(ui.toast){
+      clearTimeout(showToast._t);
+      showToast._t = setTimeout(()=>{ ui.toast = null; render(); }, 2600);
+    }
   }
 });
 
-/* 初始化載入本地資料 */
+/* 頁面載入時讀取本地緩存 */
 state.trips = loadTrips();
 render();
 </script>
