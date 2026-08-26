@@ -159,8 +159,22 @@ input,textarea,select{font-family:inherit;}
   background:var(--card);border:1px solid var(--line);border-radius:var(--radius);
   padding:20px 22px;margin-bottom:22px;position:relative;
 }
+.th-top-actions {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.th-top-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
 .back-btn{
-  background:none;border:none;color:var(--ink-soft);font-size:13px;padding:0;margin-bottom:14px;
+  background:none;border:none;color:var(--ink-soft);font-size:13px;padding:0;
   display:inline-flex;align-items:center;gap:4px;
 }
 .back-btn:hover{color:var(--ink);}
@@ -180,9 +194,9 @@ input,textarea,select{font-family:inherit;}
 .overall-pct{font-family:var(--mono);font-size:22px;font-weight:600;color:var(--teal);}
 .overall-label{font-size:11px;color:var(--ink-soft);}
 .trip-delete-lg{
-  position:absolute;top:18px;right:22px;background:none;border:none;color:var(--ink-soft);font-size:12px;
+  background:none;border:none;color:var(--ink-soft);font-size:12px;padding:6px 8px;border-radius:6px;
 }
-.trip-delete-lg:hover{color:var(--stamp);}
+.trip-delete-lg:hover{color:var(--stamp);background:rgba(181,64,46,0.08);}
 
 /* ---------- Category cards ---------- */
 .cats-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:16px;}
@@ -222,7 +236,7 @@ input,textarea,select{font-family:inherit;}
   flex:1;min-width:110px;border:none;background:transparent;font-size:13.5px;color:var(--ink);padding:4px 2px;
   border-bottom:1px solid transparent;
 }
-.item-text:focus{outline:none;border-bottom:1px solid var(--brass);}
+.item-text:focus{outline:none;border-bottom:1.5px solid var(--brass);}
 .item-amount{
   width:90px;flex-shrink:0;border:1px solid var(--line);background:var(--white);border-radius:6px;
   font-family:var(--mono);font-size:12.5px;padding:5px 8px;text-align:right;color:var(--ink);
@@ -654,7 +668,7 @@ async function syncToSupabase(tripsToSave = state.trips) {
 
       return {
         id: trip.id,
-        user_id: currentUser.id,
+        user_id: trip.user_id || currentUser.id,
         destination: trip.destination || '未命名行程',
         start_date: trip.startDate || null,
         end_date: trip.endDate || null,
@@ -747,6 +761,7 @@ async function syncFromSupabase(isRealtimeTrigger = false) {
 
     const remoteOwned = (userTrips || []).map(t => ({
       id: t.id,
+      user_id: t.user_id,
       destination: t.destination || '未命名行程',
       startDate: t.start_date || '',
       endDate: t.end_date || '',
@@ -756,6 +771,7 @@ async function syncFromSupabase(isRealtimeTrigger = false) {
 
     const remoteShared = collabTrips.map(t => ({
       id: t.id,
+      user_id: t.user_id,
       destination: t.destination || '未命名行程',
       startDate: t.start_date || '',
       endDate: t.end_date || '',
@@ -801,6 +817,9 @@ async function syncFromSupabase(isRealtimeTrigger = false) {
       if (!remoteOwnedMap.has(id)) {
         if (!localTrip.updated_at) {
           localTrip.updated_at = new Date().toISOString();
+        }
+        if (!localTrip.user_id && currentUser) {
+          localTrip.user_id = currentUser.id;
         }
         mergedMap.set(id, localTrip);
         localOnlyTrips.push(localTrip);
@@ -871,6 +890,7 @@ supabaseClient.auth.onAuthStateChange((event, session) => {
           if (!error && trip) {
             const formatted = {
               id: trip.id,
+              user_id: trip.user_id,
               destination: trip.destination || '未命名行程',
               startDate: trip.start_date || '',
               endDate: trip.end_date || '',
@@ -1151,11 +1171,12 @@ function renderAuthBar() {
 function renderListView(){
   const cards = state.trips.map(t=>{
     const pct = overallProgress(t);
+    const isOwner = !t.user_id || (currentUser && t.user_id === currentUser.id);
     return `
     <div class="trip-card" data-action="open-trip" data-id="${t.id}">
       <div class="tag-hole"></div>
       <span class="drag-handle" data-action="noop" title="按住拖曳調整順序">⠿</span>
-      <button class="trip-delete" data-action="delete-trip" data-id="${t.id}" title="刪除這趟行程">✕</button>
+      ${isOwner ? `<button class="trip-delete" data-action="delete-trip" data-id="${t.id}" title="刪除這趟行程">✕</button>` : ''}
       <div class="trip-card-main">
         <div class="trip-dest">${escapeHtml(t.destination) || '未命名行程'}</div>
         <div class="trip-dates">${escapeHtml(fmtDateRange(t))}</div>
@@ -1395,6 +1416,7 @@ function renderTripView(){
   const trip = state.trips.find(t=>t.id===state.currentTripId);
   if(!trip){ state.view='list'; return renderListView(); }
   const pct = overallProgress(trip);
+  const isOwner = !trip.user_id || (currentUser && trip.user_id === currentUser.id);
 
   const catsHtml = CATS.map(c=>renderCategoryCard(trip, c)).join('');
 
@@ -1404,11 +1426,13 @@ function renderTripView(){
       ${currencySuggestions().map(c=>`<option value="${escapeAttr(c)}">`).join('')}
     </datalist>
     <div class="trip-header">
-      <div style="position:absolute; top:18px; right:22px; display:flex; gap:10px;">
-        <button class="modal-btn" data-action="open-share-modal">🔗 分享／協作</button>
-        <button class="trip-delete-lg" data-action="delete-trip" data-id="${trip.id}">刪除此行程</button>
+      <div class="th-top-actions">
+        <button class="back-btn" data-action="back">← 返回所有行程</button>
+        <div class="th-top-right">
+          <button class="modal-btn" data-action="open-share-modal">🔗 分享與協作</button>
+          ${isOwner ? `<button class="trip-delete-lg" data-action="delete-trip" data-id="${trip.id}">刪除此行程</button>` : ''}
+        </div>
       </div>
-      <button class="back-btn" data-action="back">← 返回所有行程</button>
       <div class="th-row">
         <input class="trip-title-input" data-action="update-trip-field" data-field="destination" value="${escapeAttr(trip.destination)}" placeholder="目的地">
         <div class="th-dates">
@@ -1781,6 +1805,7 @@ app.addEventListener('click', async (e)=>{
     const dest = ui.draft.destination.trim();
     const trip = {
       id: uid(),
+      user_id: currentUser ? currentUser.id : null,
       destination: dest || '未命名行程',
       startDate: ui.draft.start || '',
       endDate: ui.draft.end || '',
