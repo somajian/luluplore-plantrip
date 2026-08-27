@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="zh-Hant">
 <head>
@@ -205,19 +206,7 @@ input,textarea,select{font-family:inherit;}
 .cats-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:16px;}
 .cat-card{
   background:var(--card);border:1px solid var(--line);border-radius:var(--radius);
-  display:flex;flex-direction:column;max-height:none;overflow:visible;
-}
-/* 花費與記帳：清單本身可在卡片內滾動，但新增欄位與下方統計不會被卡片高度裁切 */
-.cat-card[data-cat="expenses"] .cat-body{
-  max-height:420px;
-  overflow-y:auto;
-  min-height:0;
-}
-.cat-card[data-cat="expenses"] .add-item-row-stack,
-.cat-card[data-cat="expenses"] .expense-total,
-.cat-card[data-cat="expenses"] .summary-toggle,
-.cat-card[data-cat="expenses"] .money-panel{
-  flex-shrink:0;
+  display:flex;flex-direction:column;max-height:440px;overflow:hidden;
 }
 .cat-head{display:flex;align-items:center;gap:6px;padding:14px 12px 10px 16px;border-bottom:1px dashed var(--line);}
 .cat-icon{font-size:18px;}
@@ -483,32 +472,6 @@ input,textarea,select{font-family:inherit;}
 .bulk-panel button:hover{background:var(--teal);}
 .bulk-hint{font-size:11px;color:var(--ink-soft);}
 
-.prepaid-expense {
-  background: rgba(169,131,46,0.045);
-}
-.prepaid-expense .item-text,
-.prepaid-expense .item-amount,
-.prepaid-expense .item-currency,
-.prepaid-expense .item-date,
-.prepaid-expense .expense-meta-row input {
-  color: var(--ink-soft);
-}
-.prepaid-badge {
-  font-size: 10px;
-  color: var(--brass);
-  background: var(--paper-deep);
-  border: 1px dashed var(--line);
-  border-radius: 12px;
-  padding: 2px 6px;
-  white-space: nowrap;
-  font-weight: 600;
-}
-.prepaid-expense input[readonly],
-.prepaid-expense textarea[readonly] {
-  cursor: default;
-  background: rgba(255,253,247,0.7);
-}
-
 /* expense specific */
 .expense-meta-row{display:flex;gap:6px;padding:0 4px 8px 4px;flex-wrap:wrap;}
 .expense-meta-row input,.expense-meta-row select{
@@ -631,14 +594,6 @@ input,textarea,select{font-family:inherit;}
   .overall-progress{margin-left:0;}
   .brand h1{font-size:24px;}
   .expense-meta-row{padding-left:4px;}
-
-  /* 手機版花費清單：保留卡片內捲動，統計區永遠接在新增欄位下面 */
-  .cat-card[data-cat="expenses"] .cat-body{max-height:46vh;min-height:120px;}
-  .cat-card[data-cat="expenses"] .add-item-row{gap:6px;}
-  .cat-card[data-cat="expenses"] .add-item-row .dt{flex:1 1 145px;}
-  .cat-card[data-cat="expenses"] .add-item-row input:not(.dt):not(.amt):not(.cur){flex:1 1 150px;}
-  .cat-card[data-cat="expenses"] .add-item-row .amt{flex:1 1 95px;min-width:85px;}
-  .cat-card[data-cat="expenses"] .add-item-row .cur{flex:0 0 72px;}
 }
 </style>
 </head>
@@ -706,51 +661,6 @@ const CATS = [
   {id:'expenses', label:'花費與記帳', icon:'💰', type:'expense', hint:'例：機場計程車'},
 ];
 const EXPENSE_CATS = ['吃','住','交通','購物','娛樂','景點門票','其他'];
-const PREPAID_CATEGORY_IDS = ['flight','stay','visa','taiwanTransport','overseasTransport','bookedItinerary','insurance','sim'];
-
-function isPrepaidCategoryId(catId){
-  return PREPAID_CATEGORY_IDS.includes(catId);
-}
-
-function getPrepaidExpenseItems(trip){
-  const result = [];
-  PREPAID_CATEGORY_IDS.forEach(catId => {
-    const catData = trip.categories && trip.categories[catId];
-    if(!catData || !Array.isArray(catData.items)) return;
-    catData.items.forEach(item => {
-      const rawAmount = item.amount;
-      if(rawAmount === '' || rawAmount === null || rawAmount === undefined) return;
-      const amount = parseFloat(rawAmount);
-      if(!Number.isFinite(amount)) return;
-      result.push({
-        id: `prepaid-${catId}-${item.id}`,
-        text: item.text || '未命名固定支出',
-        checked: !!item.checked,
-        note: item.note || '',
-        link: item.link || '',
-        date: item.date || trip.startDate || '',
-        amount: item.amount,
-        currency: (item.currency || '').trim(),
-        category: '旅行固定支出',
-        payment: (item.payment || '').trim(),
-        isPrepaid: true,
-        prepaidSourceCategoryId: catId,
-        prepaidSourceItemId: item.id
-      });
-    });
-  });
-  return result;
-}
-
-function getAllExpenseItems(trip){
-  const manual = (trip.categories.expenses && trip.categories.expenses.items) || [];
-  return [...manual, ...getPrepaidExpenseItems(trip)];
-}
-
-function getManualExpenseItems(trip){
-  return (trip.categories.expenses && trip.categories.expenses.items) || [];
-}
-
 
 function paymentSuggestions(){
   const set = new Set(['現金']);
@@ -760,9 +670,6 @@ function paymentSuggestions(){
         if(i.payment && i.payment.trim()) set.add(i.payment.trim());
       });
     }
-    getPrepaidExpenseItems(t).forEach(i=>{
-      if(i.payment && i.payment.trim()) set.add(i.payment.trim());
-    });
   });
   return Array.from(set);
 }
@@ -1294,7 +1201,7 @@ function overallProgress(trip){
 }
 function expenseTotalsByCurrency(trip){
   const map = {};
-  const items = getAllExpenseItems(trip);
+  const items = (trip.categories.expenses && trip.categories.expenses.items) || [];
   items.forEach(i=>{
     const cur = (i.currency||'').trim() || '未填幣別';
     map[cur] = (map[cur]||0) + (parseFloat(i.amount)||0);
@@ -1545,35 +1452,24 @@ function renderListView(){
 
 /* ===================== 花費統整／換匯結餘 ===================== */
 function renderExpenseSummaryInner(trip){
-  const manualItems = getManualExpenseItems(trip);
-  const prepaidItems = getPrepaidExpenseItems(trip);
-  const allItems = [...manualItems, ...prepaidItems];
-  if(allItems.length===0) return '<div class="summary-row"><span>尚無資料</span><span>–</span></div>';
-
-  const currencies = Array.from(new Set(allItems.map(i=>(i.currency||'').trim() || '未填幣別')));
+  const items = (trip.categories.expenses && trip.categories.expenses.items) || [];
+  if(items.length===0) return '<div class="summary-row"><span>尚無資料</span><span>–</span></div>';
+  const currencies = Array.from(new Set(items.map(i=>(i.currency||'').trim() || '未填幣別')));
   const rowsHtml = (arr) => arr.map(([k,v])=>`<div class="summary-row"><span>${escapeHtml(k)}</span><span>${v.toLocaleString()}</span></div>`).join('');
-
   const body = currencies.map(cur=>{
-    const manualSubset = manualItems.filter(i=> ((i.currency||'').trim() || '未填幣別') === cur);
-    const prepaidSubset = prepaidItems.filter(i=> ((i.currency||'').trim() || '未填幣別') === cur);
-    const categoryRows = [
-      ...groupSum(manualSubset, 'category'),
-      ...(prepaidSubset.length ? [['旅行固定支出', prepaidSubset.reduce((sum,i)=>sum + (parseFloat(i.amount)||0), 0)]] : [])
-    ];
-
+    const subset = items.filter(i=> ((i.currency||'').trim() || '未填幣別') === cur);
     return `
       <div class="summary-title" style="margin-top:14px;">💱 ${escapeHtml(cur)}</div>
       <div class="summary-group by-payment">
-        <div class="summary-group-title">依付款方式（僅計算手動花費）</div>
-        ${manualSubset.length ? rowsHtml(groupSum(manualSubset, 'payment')) : '<div class="summary-row"><span>尚無手動花費</span><span>–</span></div>'}
+        <div class="summary-group-title">依付款方式</div>
+        ${rowsHtml(groupSum(subset, 'payment'))}
       </div>
       <div class="summary-group by-category">
-        <div class="summary-group-title">依類別（包含旅行固定支出）</div>
-        ${categoryRows.length ? rowsHtml(categoryRows) : '<div class="summary-row"><span>尚無資料</span><span>–</span></div>'}
+        <div class="summary-group-title">依類別</div>
+        ${rowsHtml(groupSum(subset, 'category'))}
       </div>`;
   }).join('');
-
-  return body + `<div class="summary-hint">「旅行固定支出」會自動包含上方機票、住宿、簽證、台灣交通、國外交通預訂、已預訂的行程、保險、手機網路中有填金額的項目；這些固定支出會計入花費總額與類別統計，但不會計入付款方式統計。付款方式統計只計算你在「花費與記帳」手動新增的費用。</div>`;
+  return body + `<div class="summary-hint">現金花費算是動用你已換好的旅費；其他付款方式則是行程外的額外支出。不同幣別分開統計，不會混加在一起。</div>`;
 }
 function renderExpenseTotalsInner(trip){
   const totals = expenseTotalsByCurrency(trip);
@@ -1713,12 +1609,10 @@ function renderCategoryCard(trip, cat){
   const isExpense = cat.type === 'expense';
   const isExchange = cat.type === 'exchange';
   const isPacking = cat.id === 'packing';
-  const isPrepaidSource = isPrepaidCategoryId(cat.id);
-  const displayItems = isExpense ? [...items, ...getPrepaidExpenseItems(trip)] : items;
 
   let fracHtml;
   if(isExpense){
-    fracHtml = `<span class="cat-frac">${displayItems.length} 筆</span>`;
+    fracHtml = `<span class="cat-frac">${items.length} 筆</span>`;
   } else {
     const p = catProgress(trip, cat);
     fracHtml = `<span class="cat-frac">${p.done}/${p.total}</span>`;
@@ -1729,7 +1623,6 @@ function renderCategoryCard(trip, cat){
   const renderSingleItem = (it) => {
     const expanded = ui.expanded.has(cat.id+'|'+it.id);
     const isSelected = ui.selectedItemIds.has(it.id);
-    const isPrepaid = isExpense && !!it.isPrepaid;
     
     // 行李清單專屬：批次勾選框與單一移動下拉選單
     const subgroups = (data.subgroups || []);
@@ -1748,64 +1641,34 @@ function renderCategoryCard(trip, cat){
       `;
     }
 
-    const prepaidBadge = isPrepaid ? `<span class="prepaid-badge">旅行固定支出</span>` : '';
-    const expenseTextReadonly = isPrepaid ? 'readonly' : '';
-    const expenseAmountReadonly = isPrepaid ? 'readonly' : '';
-    const expenseCurrencyReadonly = isPrepaid ? 'readonly' : '';
-    const expenseDateReadonly = isPrepaid ? 'readonly' : '';
-    const expenseMetaReadonly = isPrepaid ? 'readonly' : '';
-    const toggleButtonHtml = isPrepaid ? '' : '<button class="stamp-check ' + (it.checked ? 'on' : '') + '" data-action="toggle-item" data-cat="' + cat.id + '" data-item="' + it.id + '" title="完成後會計入整體進度，項目本身仍會保留">' + (it.checked ? '✓' : '') + '</button>';
-    const deleteButtonHtml = isPrepaid ? '' : `<button class="item-delete" data-action="delete-item" data-cat="${cat.id}" data-item="${it.id}">🗑</button>`;
-
     return `
-    <div class="item-block ${it.checked?'done':''} ${isPrepaid?'prepaid-expense':''}" data-cat="${cat.id}" data-item="${it.id}">
+    <div class="item-block ${it.checked?'done':''}" data-cat="${cat.id}" data-item="${it.id}">
       <div class="item-row">
         ${batchCheckboxHtml}
-        ${isPrepaid ? `<button class="stamp-check ${it.checked?'on':''}" title="此筆由上方行前固定支出自動連動">${it.checked?'✓':''}</button>` : toggleButtonHtml}
+        <button class="stamp-check ${it.checked?'on':''}" data-action="toggle-item" data-cat="${cat.id}" data-item="${it.id}" title="完成後會計入整體進度，項目本身仍會保留">${it.checked?'✓':''}</button>
         ${cat.type==='itinerary' ? `<input class="item-day" data-field="day" placeholder="Day" value="${escapeAttr(it.day||'')}">` : ''}
-        <input class="item-text" data-field="text" value="${escapeAttr(it.text)}" placeholder="項目名稱" ${expenseTextReadonly}>
-        ${isPrepaidSource ? `
-          <input class="item-amount" data-field="amount" type="number" step="any" placeholder="金額" value="${it.amount==null?'':it.amount}">
-          <input class="item-currency" list="currency-list" data-field="currency" placeholder="幣別" value="${escapeAttr(it.currency||'')}">
-        ` : ''}
+        <input class="item-text" data-field="text" value="${escapeAttr(it.text)}" placeholder="項目名稱">
         ${moveSelectHtml}
-        ${isPrepaid ? `
-          <input class="item-amount" data-field="amount" data-prepaid-cat="${escapeAttr(it.prepaidSourceCategoryId||'')}" data-prepaid-item="${escapeAttr(it.prepaidSourceItemId||'')}" type="number" step="any" placeholder="金額" value="${it.amount==null?'':it.amount}">
-          <input class="item-currency" list="currency-list" data-field="currency" data-prepaid-cat="${escapeAttr(it.prepaidSourceCategoryId||'')}" data-prepaid-item="${escapeAttr(it.prepaidSourceItemId||'')}" placeholder="幣別" value="${escapeAttr(it.currency||'')}">
-        ` : ''}
         ${isExchange ? `<input class="item-amount" data-field="amount" type="number" step="any" placeholder="金額" value="${it.amount==null?'':it.amount}">
         <input class="item-currency" list="currency-list" data-field="currency" placeholder="幣別" value="${escapeAttr(it.currency||'')}">` : ''}
         ${isExpense ? `
-          <input class="item-date" type="date" data-field="date" value="${escapeAttr(it.date||'')}" ${expenseDateReadonly}>
-          <input class="item-amount" data-field="amount" type="number" step="any" placeholder="金額" value="${it.amount==null?'':it.amount}" ${expenseAmountReadonly}>
-          <input class="item-currency" list="currency-list" data-field="currency" placeholder="幣別" value="${escapeAttr(it.currency||'')}" ${expenseCurrencyReadonly}>
+          <input class="item-date" type="date" data-field="date" value="${escapeAttr(it.date||'')}">
+          <input class="item-amount" data-field="amount" type="number" step="any" placeholder="金額" value="${it.amount==null?'':it.amount}">
+          <input class="item-currency" list="currency-list" data-field="currency" placeholder="幣別" value="${escapeAttr(it.currency||'')}">
         ` : ''}
-        ${prepaidBadge}
         <button class="item-more" data-action="toggle-detail" data-cat="${cat.id}" data-item="${it.id}">${expanded?'▲ 收起':'▼ 備註/連結'}</button>
-        ${deleteButtonHtml}
+        <button class="item-delete" data-action="delete-item" data-cat="${cat.id}" data-item="${it.id}">🗑</button>
       </div>
       ${isExpense ? `
         <div class="expense-meta-row">
-          <input list="category-list" data-field="category" placeholder="類別（如吃、住）" value="${escapeAttr(it.category||'')}" ${expenseMetaReadonly}>
-          <input list="payment-list" data-field="payment" placeholder="付款方式（如現金、信用卡）" value="${escapeAttr(it.payment||'')}" ${expenseMetaReadonly}>
-        </div>
-      ` : ''}
-      ${isPrepaidSource ? `
-        <div class="expense-meta-row">
+          <input list="category-list" data-field="category" placeholder="類別（如吃、住）" value="${escapeAttr(it.category||'')}">
           <input list="payment-list" data-field="payment" placeholder="付款方式（如現金、信用卡）" value="${escapeAttr(it.payment||'')}">
-          <span style="font-size:11px; color:var(--ink-soft); align-self:center;">↳ 填寫金額後會自動帶入下方「旅行固定支出」</span>
-        </div>
-      ` : ''}
-      ${isPrepaid ? `
-        <div class="expense-meta-row">
-          <input list="payment-list" data-field="payment" data-prepaid-cat="${escapeAttr(it.prepaidSourceCategoryId||'')}" data-prepaid-item="${escapeAttr(it.prepaidSourceItemId||'')}" placeholder="付款方式（如現金、信用卡）" value="${escapeAttr(it.payment||'')}">
-          <span style="font-size:11px; color:var(--ink-soft); align-self:center;">↳ 此筆會計入「旅行固定支出」，不計入付款方式總計</span>
         </div>
       ` : ''}
       ${expanded ? `
         <div class="item-detail">
-          <input class="item-link" data-field="link" value="${escapeAttr(it.link||'')}" placeholder="🔗 網頁連結或 Google 地圖網址" ${isPrepaid?'readonly':''}>
-          <textarea class="item-note" data-field="note" placeholder="📝 備註（例如：確認號碼、時間、說明...）" ${isPrepaid?'readonly':''}>${escapeHtml(it.note||'')}</textarea>
+          <input class="item-link" data-field="link" value="${escapeAttr(it.link||'')}" placeholder="🔗 網頁連結或 Google 地圖網址">
+          <textarea class="item-note" data-field="note" placeholder="📝 備註（例如：確認號碼、時間、說明...）">${escapeHtml(it.note||'')}</textarea>
         </div>
       ` : ''}
     </div>`;
@@ -1922,7 +1785,7 @@ function renderCategoryCard(trip, cat){
 
     bodyHtml = groupsHtml + unGroupedHtml;
   } else {
-    bodyHtml = displayItems.length === 0 ? `<div class="empty-cat">尚無項目，從下方快速新增</div>` : displayItems.map(renderSingleItem).join('');
+    bodyHtml = items.length === 0 ? `<div class="empty-cat">尚無項目，從下方快速新增</div>` : items.map(renderSingleItem).join('');
   }
 
   const isBulk = ui.bulkOpen.has(cat.id);
@@ -2459,17 +2322,6 @@ function handleInputChange(e){
     }
   }
 
-  if(target.dataset.prepaidCat && target.dataset.prepaidItem && trip){
-    const sourceCat = trip.categories[target.dataset.prepaidCat];
-    const sourceItem = sourceCat && sourceCat.items ? sourceCat.items.find(i => i.id === target.dataset.prepaidItem) : null;
-    if(sourceItem && field === 'payment'){
-      sourceItem.payment = target.value;
-      scheduleSave();
-      render();
-      return;
-    }
-  }
-
   const itemBlock = target.closest('.item-block');
   const shoppingCard = target.closest('.shopping-card');
 
@@ -2491,9 +2343,6 @@ function handleInputChange(e){
         else if(field==='note') item.note = target.value;
         else if(field==='link') item.link = target.value;
         scheduleSave();
-        if(isPrepaidCategoryId(cId) && ['amount','currency','payment','text'].includes(field)){
-          render();
-        }
       }
     }
   }
