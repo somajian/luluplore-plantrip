@@ -1566,7 +1566,6 @@ function deleteSubgroup(catId, sgName) {
 }
 
 function toggleSubgroup(catId, sgName) {
-  const currentScrollY = window.scrollY;
   const key = catId + '|' + sgName;
   if (ui.collapsedSubgroups.has(key)) {
     ui.collapsedSubgroups.delete(key);
@@ -1574,11 +1573,14 @@ function toggleSubgroup(catId, sgName) {
     ui.collapsedSubgroups.add(key);
   }
   
-  render();
-  window.scrollTo(0, currentScrollY);
-  requestAnimationFrame(() => {
-    window.scrollTo(0, currentScrollY);
-  });
+  const sgEl = document.querySelector(`.subgroup-container[data-subgroup="${CSS.escape(sgName)}"]`);
+  if (sgEl) {
+    sgEl.classList.toggle('is-collapsed', ui.collapsedSubgroups.has(key));
+    const iconSpan = sgEl.querySelector('.subgroup-header-left > span');
+    if (iconSpan) {
+      iconSpan.textContent = ui.collapsedSubgroups.has(key) ? '►' : '▼';
+    }
+  }
 }
 
 /* ===================== 渲染：單一分類卡片 ===================== */
@@ -1692,7 +1694,7 @@ function renderCategoryCard(trip, cat){
       const sgItems = items.filter(i => i.subgroup === sg);
       const isCollapsed = ui.collapsedSubgroups.has('shopping|' + sg);
       return `
-        <div class="subgroup-container" data-subgroup="${escapeAttr(sg)}">
+        <div class="subgroup-container ${isCollapsed ? 'is-collapsed' : ''}" data-subgroup="${escapeAttr(sg)}">
           <div class="subgroup-header" data-action="toggle-subgroup" data-cat="shopping" data-group="${escapeAttr(sg)}">
             <div class="subgroup-header-left">
               <span>${isCollapsed ? '►' : '▼'} 🏪</span>
@@ -1701,11 +1703,11 @@ function renderCategoryCard(trip, cat){
             </div>
             <button class="subgroup-delete" onclick="event.stopPropagation(); deleteSubgroup('shopping', '${escapeAttr(sg)}')" title="刪除整塊分類及相關項目">✕</button>
           </div>
-          ${!isCollapsed ? `
+          <div class="subgroup-content" style="${isCollapsed ? 'display:none;' : ''}">
             <div class="shopping-grid">
               ${sgItems.map(renderShoppingItem).join('')}
             </div>
-          ` : ''}
+          </div>
         </div>
       `;
     }).join('');
@@ -1732,7 +1734,7 @@ function renderCategoryCard(trip, cat){
       const sgItems = groupedItems.filter(i => i.subgroup === sg);
       const isCollapsed = ui.collapsedSubgroups.has('packing|' + sg);
       return `
-        <div class="subgroup-container" data-subgroup="${escapeAttr(sg)}">
+        <div class="subgroup-container ${isCollapsed ? 'is-collapsed' : ''}" data-subgroup="${escapeAttr(sg)}">
           <div class="subgroup-header" data-action="toggle-subgroup" data-cat="packing" data-group="${escapeAttr(sg)}">
             <div class="subgroup-header-left">
               <span>${isCollapsed ? '►' : '▼'} 📁</span>
@@ -1741,7 +1743,9 @@ function renderCategoryCard(trip, cat){
             </div>
             <button class="subgroup-delete" onclick="event.stopPropagation(); deleteSubgroup('packing', '${escapeAttr(sg)}')">✕</button>
           </div>
-          ${!isCollapsed ? sgItems.map(renderSingleItem).join('') : ''}
+          <div class="subgroup-content" style="${isCollapsed ? 'display:none;' : ''}">
+            ${sgItems.map(renderSingleItem).join('')}
+          </div>
         </div>
       `;
     }).join('');
@@ -1835,75 +1839,83 @@ function renderCategoryCard(trip, cat){
       </div>`;
   }
 
-  let extraPanelsHtml = '';
+  let summaryBox = '';
   if(isExpense){
-    const summaryOpen = ui.summaryOpen.has('expenses-sum');
-    const reconOpen = ui.summaryOpen.has('expenses-recon');
-    extraPanelsHtml = `
+    const showSummary = ui.summaryOpen.has('expenses');
+    summaryBox = `
       <div class="expense-total">
         ${renderExpenseTotalsInner(trip)}
       </div>
-      <button class="summary-toggle" data-action="toggle-summary" data-panel="expenses-sum">${summaryOpen?'▲ 收起花費統計':'▼ 查看花費統計（依付款方式／類別）'}</button>
-      ${summaryOpen ? `<div class="money-panel">${renderExpenseSummaryInner(trip)}</div>` : ''}
-      <button class="summary-toggle" data-action="toggle-summary" data-panel="expenses-recon">${reconOpen?'▲ 收起現金結餘':'▼ 查看現金結餘（換匯 vs 現金花費）'}</button>
-      ${reconOpen ? `<div class="money-panel">${renderExchangeReconInner(trip)}</div>` : ''}
-    `;
+      <button class="summary-toggle" data-action="toggle-summary" data-target="expenses">
+        ${showSummary ? '▲ 收起分類與付款明細' : '📊 查看分類與付款統計'}
+      </button>
+      ${showSummary ? `<div class="money-panel">${renderExpenseSummaryInner(trip)}</div>` : ''}`;
   } else if(isExchange){
-    const reconOpen = ui.summaryOpen.has('exchange-recon');
-    extraPanelsHtml = `
-      <button class="summary-toggle" data-action="toggle-summary" data-panel="exchange-recon" style="margin-top:6px;">${reconOpen?'▲ 收起現金結餘':'▼ 查看現金結餘（換匯 vs 現金花費）'}</button>
-      ${reconOpen ? `<div class="money-panel">${renderExchangeReconInner(trip)}</div>` : ''}
-    `;
+    const showSummary = ui.summaryOpen.has('exchange');
+    summaryBox = `
+      <button class="summary-toggle" data-action="toggle-summary" data-target="exchange">
+        ${showSummary ? '▲ 收起現金對帳結餘' : '🧮 查看現金對帳結餘'}
+      </button>
+      ${showSummary ? `<div class="money-panel">${renderExchangeReconInner(trip)}</div>` : ''}`;
   }
 
   return `
-  <div class="cat-card">
-    <div class="cat-head">
-      <span class="cat-icon">${cat.icon}</span>
-      <span class="cat-title">${cat.label}</span>
-      ${fracHtml}
-      ${bulkBtn}
-    </div>
-    ${bulkHtml}
-    <div class="cat-body">
-      ${batchActionBarHtml}
-      ${bodyHtml}
-      ${extraPanelsHtml}
-    </div>
-    ${addRowHtml}
-  </div>`;
+    <div class="cat-card">
+      <div class="cat-head">
+        <span class="cat-icon">${cat.icon}</span>
+        <span class="cat-title">${cat.label}</span>
+        ${fracHtml}
+        ${bulkBtn}
+      </div>
+      ${bulkHtml}
+      <div class="cat-body">
+        ${batchActionBarHtml}
+        ${bodyHtml}
+      </div>
+      ${summaryBox}
+      ${addRowHtml}
+    </div>`;
 }
 
-/* ===================== 渲染：單一行程內頁 ===================== */
+/* ===================== 渲染：行程內頁 ===================== */
 function renderTripView(){
   const trip = state.trips.find(t=>t.id === state.currentTripId);
   if(!trip){
     state.view = 'list';
     return renderListView();
   }
+
   const pct = overallProgress(trip);
-  const cardsHtml = CATS.map(c=>renderCategoryCard(trip,c)).join('');
 
   const curList = currencySuggestions().map(c=>`<option value="${escapeAttr(c)}">`).join('');
-  const payList = paymentSuggestions().map(p=>`<option value="${escapeAttr(p)}">`).join('');
   const catList = categorySuggestions().map(c=>`<option value="${escapeAttr(c)}">`).join('');
+  const payList = paymentSuggestions().map(p=>`<option value="${escapeAttr(p)}">`).join('');
+
+  const isOwner = trip.role ? trip.role === 'owner' : (!trip.user_id || (currentUser && trip.user_id === currentUser.id));
+
+  const datalists = `
+    <datalist id="currency-list">${curList}</datalist>
+    <datalist id="category-list">${catList}</datalist>
+    <datalist id="payment-list">${payList}</datalist>`;
+
+  const catCards = CATS.map(c => renderCategoryCard(trip, c)).join('');
 
   return `
+    ${datalists}
     ${renderAuthBar()}
-    <datalist id="currency-list">${curList}</datalist>
-    <datalist id="payment-list">${payList}</datalist>
-    <datalist id="category-list">${catList}</datalist>
-
     <div class="trip-header">
       <div class="th-top-actions">
         <button class="back-btn" data-action="back-list">← 返回行程列表</button>
         <div class="th-top-right">
-          ${currentUser ? `<button class="btn-auth" data-action="open-share">👥 協作分享</button>` : ''}
-          <button class="trip-delete-lg" data-action="delete-trip" data-id="${trip.id}">🗑 刪除此行程</button>
+          ${currentUser ? `<button class="btn-auth" data-action="open-share-modal" style="padding:4px 10px; font-size:12px;">👥 共同編輯 / 分享</button>` : ''}
+          ${isOwner 
+            ? `<button class="trip-delete-lg" data-action="delete-trip" data-id="${trip.id}">刪除這趟行程</button>`
+            : `<button class="trip-delete-lg" data-action="leave-collaboration" data-id="${trip.id}">退出協作</button>`
+          }
         </div>
       </div>
       <div class="th-row">
-        <input class="trip-title-input" data-field="trip-destination" value="${escapeAttr(trip.destination)}" placeholder="行程名稱">
+        <input class="trip-title-input" data-field="trip-destination" value="${escapeAttr(trip.destination)}" placeholder="行程名稱（例：東京五天四夜）">
         <div class="th-dates">
           <input type="date" data-field="trip-start" value="${escapeAttr(trip.startDate||'')}">
           <span>—</span>
@@ -1915,114 +1927,82 @@ function renderTripView(){
         </div>
       </div>
     </div>
-
-    <div class="cats-grid">${cardsHtml}</div>
-    <p class="footer-note">所有修改皆會即時保存。填寫的資料只會留在你的個人裝置或 Supabase 加密雲端中。</p>
+    <div class="cats-grid">${catCards}</div>
+    <p class="footer-note">提示：點擊右上角「≣」可一次貼上多行項目；點擊項目右側「▼」可新增備註與網頁或 Google 地圖連結。</p>
   `;
 }
 
-/* ===================== 協作 Modal 渲染與邏輯 ===================== */
-async function renderShareModalContent() {
-  const trip = state.trips.find(t => t.id === state.currentTripId);
-  if (!trip || !currentUser) return '';
-
-  const { data: collaborators, error } = await supabaseClient
-    .from('trip_collaborators')
-    .select('*')
-    .eq('trip_id', trip.id);
-
-  let listHtml = '';
-  if (collaborators && collaborators.length > 0) {
-    listHtml = collaborators.map(c => `
-      <div style="display:flex; justify-content:space-between; align-items:center; font-size:12px; margin-bottom:6px; padding:4px 0; border-bottom:1px dashed var(--line);">
-        <span>${escapeHtml(c.email)} (${c.role === 'owner' ? '建立者' : '協作者'})</span>
-        ${c.role !== 'owner' ? `<button style="border:none; background:none; color:var(--stamp); cursor:pointer; font-size:11px;" data-action="remove-collaborator" data-id="${c.id}">移除</button>` : ''}
-      </div>
-    `).join('');
-  } else {
-    listHtml = `<div style="font-size:12px; color:var(--ink-soft); margin-bottom:8px;">目前尚無其他協作者</div>`;
-  }
-
-  const shareUrl = window.location.origin + window.location.pathname + '?trip_id=' + trip.id;
-
-  return `
-    <div class="modal-overlay">
-      <div class="modal-box" style="max-width:440px;">
-        <h3 style="margin-top:0; font-size:16px;">👥 共同編輯與協作分享</h3>
-        <p style="font-size:12px; color:var(--ink-soft);">輸入夥伴的 Google Email，即可邀請他一起編輯這趟行程：</p>
-        
-        <div style="display:flex; gap:6px; margin-bottom:14px;">
-          <input type="email" id="collaborator-email-input" placeholder="夥伴的 Email" value="${escapeAttr(ui.collaboratorEmail)}" style="flex:1; border:1px solid var(--line); border-radius:6px; padding:6px 8px; font-size:12px;">
-          <button data-action="add-collaborator" style="background:var(--teal); color:var(--white); border:none; border-radius:6px; padding:6px 12px; font-size:12px; font-weight:600;">邀請</button>
-        </div>
-
-        <div style="margin-bottom:14px;">
-          <div style="font-size:12px; font-weight:600; margin-bottom:6px;">協作者名單：</div>
-          ${listHtml}
-        </div>
-
-        <div style="border-top:1px dashed var(--line); padding-top:10px; margin-bottom:14px;">
-          <div style="font-size:12px; font-weight:600; margin-bottom:4px;">🔗 專屬行程邀請連結：</div>
-          <div style="display:flex; gap:6px;">
-            <input type="text" readonly value="${escapeAttr(shareUrl)}" style="flex:1; border:1px solid var(--line); background:#fff; border-radius:6px; padding:4px 6px; font-size:11px; color:var(--ink-soft);">
-            <button data-action="copy-share-url" data-url="${escapeAttr(shareUrl)}" style="background:var(--ink); color:var(--white); border:none; border-radius:6px; padding:4px 8px; font-size:11px;">複製連結</button>
-          </div>
-        </div>
-
-        <div class="modal-btns">
-          <button class="modal-btn" data-action="close-share">關閉</button>
-        </div>
-      </div>
-    </div>
-  `;
-}
-
-/* ===================== 主渲染入口 ===================== */
-let isModalRendering = false;
-async function render(){
-  const app = document.getElementById('app');
-  let content = state.view === 'trip' ? renderTripView() : renderListView();
-
-  if (ui.shareModal && currentUser && !isModalRendering) {
-    isModalRendering = true;
-    const modalHtml = await renderShareModalContent();
-    content += modalHtml;
-    isModalRendering = false;
-  }
-
-  if(ui.modalImageSrc) {
-    content += `
-      <div class="image-modal-overlay" data-action="close-image-modal">
-        <div class="image-modal-content" onclick="event.stopPropagation();">
-          <button class="image-modal-close" data-action="close-image-modal">✕</button>
-          <img src="${escapeAttr(ui.modalImageSrc)}" alt="放大顯示照片">
-        </div>
-      </div>
-    `;
-  }
+/* ===================== Modal 與 Toast 渲染 ===================== */
+function renderModals(){
+  let html = '';
 
   if(ui.confirm){
-    content += `
-    <div class="modal-overlay">
-      <div class="modal-box">
-        <p class="modal-msg">${escapeHtml(ui.confirm.message)}</p>
-        <div class="modal-btns">
-          <button class="modal-btn" data-action="cancel-dialog">取消</button>
-          <button class="modal-btn ${ui.confirm.danger?'danger':'primary'}" data-action="ok-dialog">確定</button>
+    html += `
+      <div class="modal-overlay">
+        <div class="modal-box">
+          <div class="modal-msg">${escapeHtml(ui.confirm.message)}</div>
+          <div class="modal-btns">
+            <button class="modal-btn" data-action="confirm-cancel">取消</button>
+            <button class="modal-btn ${ui.confirm.isDanger?'danger':'primary'}" data-action="confirm-ok">確定</button>
+          </div>
         </div>
-      </div>
-    </div>`;
+      </div>`;
+  }
+
+  if (ui.shareModal) {
+    const trip = state.trips.find(t => t.id === state.currentTripId);
+    const shareUrl = window.location.origin + window.location.pathname + '?trip_id=' + (trip ? trip.id : '');
+
+    html += `
+      <div class="modal-overlay">
+        <div class="modal-box" style="max-width: 460px;">
+          <h3 style="margin-top:0; color:var(--ink);">👥 行程共同編輯與分享</h3>
+          <p style="font-size:12.5px; color:var(--ink-soft); line-height:1.5;">
+            您可以邀請其他人一起編輯此行程。受邀者登入後點擊專屬連結即可同步編輯。
+          </p>
+          
+          <div style="margin-bottom: 16px;">
+            <label style="font-size:12px; font-weight:600; color:var(--ink);">新增協作者 Email：</label>
+            <div style="display:flex; gap:6px; margin-top:4px;">
+              <input type="email" id="share-email-input" placeholder="example@gmail.com" value="${escapeAttr(ui.collaboratorEmail)}" style="flex:1; border:1px solid var(--line); border-radius:6px; padding:6px 8px; font-size:12.5px;">
+              <button class="modal-btn primary" data-action="add-collaborator">邀請</button>
+            </div>
+          </div>
+
+          <div style="margin-bottom: 16px;">
+            <label style="font-size:12px; font-weight:600; color:var(--ink);">專屬分享連結：</label>
+            <div style="display:flex; gap:6px; margin-top:4px;">
+              <input type="text" readonly value="${escapeAttr(shareUrl)}" style="flex:1; border:1px solid var(--line); background:#f9f9f9; border-radius:6px; padding:6px 8px; font-size:11.5px; color:var(--ink-soft);">
+              <button class="modal-btn" data-action="copy-share-link">複製連結</button>
+            </div>
+          </div>
+
+          <div class="modal-btns">
+            <button class="modal-btn" data-action="close-share-modal">關閉</button>
+          </div>
+        </div>
+      </div>`;
+  }
+
+  if (ui.modalImageSrc) {
+    html += `
+      <div class="image-modal-overlay" onclick="closeImageModal()">
+        <div class="image-modal-content" onclick="event.stopPropagation()">
+          <button class="image-modal-close" onclick="closeImageModal()">✕</button>
+          <img src="${escapeAttr(ui.modalImageSrc)}" alt="大圖預覽">
+        </div>
+      </div>`;
   }
 
   if(ui.toast){
-    content += `<div class="toast ${ui.toast.error?'error':''}">${escapeHtml(ui.toast.msg)}</div>`;
+    html += `<div class="toast ${ui.toast.isError?'error':''}">${escapeHtml(ui.toast.msg)}</div>`;
   }
 
-  app.innerHTML = content;
+  return html;
 }
 
 function showToast(msg, isError=false){
-  ui.toast = {msg, error: isError};
+  ui.toast = {msg, isError};
   render();
   setTimeout(()=>{
     if(ui.toast && ui.toast.msg === msg){
@@ -2032,205 +2012,137 @@ function showToast(msg, isError=false){
   }, 2400);
 }
 
-function confirmDialog(message, danger=false){
-  return new Promise((resolve)=>{
-    ui.confirm = { message, danger, resolve };
-    render();
-  });
+function confirmDialog(message, onOk, isDanger=false){
+  ui.confirm = { message, onOk, isDanger };
+  render();
 }
 
-/* ===================== 圖片上傳與縮圖處理 ===================== */
-function compressImage(file, maxWidth = 800, quality = 0.7) {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      const img = new Image();
-      img.onload = () => {
-        let width = img.width;
-        let height = img.height;
-
-        if (width > maxWidth) {
-          height = Math.round((height * maxWidth) / width);
-          width = maxWidth;
-        }
-
-        const canvas = document.createElement('canvas');
-        canvas.width = width;
-        canvas.height = height;
-
-        const ctx = canvas.getContext('2d');
-        ctx.drawImage(img, 0, 0, width, height);
-
-        const dataUrl = canvas.toDataURL('image/jpeg', quality);
-        resolve(dataUrl);
-      };
-      img.onerror = reject;
-      img.src = e.target.result;
-    };
-    reader.onerror = reject;
-    reader.readAsDataURL(file);
-  });
-}
-
-async function handleImageUpload(event, tripId, itemId) {
-  const file = event.target.files[0];
-  if (!file) return;
-
-  try {
-    showToast('正在處理圖片...');
-    const compressedBase64 = await compressImage(file, 800, 0.7);
-
-    const trip = state.trips.find(t => t.id === tripId);
-    if (!trip || !trip.categories.shopping) return;
-
-    const item = trip.categories.shopping.items.find(i => i.id === itemId);
-    if (item) {
-      item.image = compressedBase64;
-      scheduleSave();
-      render();
-      showToast('圖片上傳成功！');
-    }
-  } catch (err) {
-    console.error('Image processing error:', err);
-    showToast('圖片上傳失敗，請重試', true);
+/* ===================== 全域主 Render ===================== */
+function render(){
+  const app = document.getElementById('app');
+  let mainContent = '';
+  if(state.view === 'list'){
+    mainContent = renderListView();
+  } else {
+    mainContent = renderTripView();
   }
+  app.innerHTML = mainContent + renderModals();
 }
 
-/* ===================== 事件處理 ===================== */
-document.addEventListener('click', async (e) => {
-  const photoItem = e.target.closest('.photo-item');
-  if (photoItem && !e.target.closest('.img-upload-input')) {
-    const itemId = photoItem.getAttribute('data-item-id');
-    const imgSrc = photoItem.getAttribute('data-img-src');
-
-    if (imgSrc) {
-      ui.modalImageSrc = imgSrc;
-      render();
-    } else {
-      const inputEl = document.getElementById('img-input-' + itemId);
-      if (inputEl) inputEl.click();
-    }
-    return;
-  }
-
+/* ===================== 事件處理邏輯 ===================== */
+document.addEventListener('click', async (e)=>{
   const btn = e.target.closest('[data-action]');
   if(!btn) return;
   const action = btn.dataset.action;
 
-  if(action==='noop') return;
-
-  if(action==='close-image-modal') {
-    ui.modalImageSrc = null;
-    render();
-    return;
-  }
-
   if (action === 'auth-login') {
-    await signInWithGoogle();
+    signInWithGoogle();
     return;
   }
-
   if (action === 'auth-logout') {
-    await signOut();
+    signOut();
     return;
   }
 
-  if (action === 'open-share') {
+  if (action === 'open-share-modal') {
     ui.shareModal = true;
     render();
     return;
   }
-
-  if (action === 'close-share') {
+  if (action === 'close-share-modal') {
     ui.shareModal = false;
     render();
     return;
   }
-
+  if (action === 'copy-share-link') {
+    const trip = state.trips.find(t => t.id === state.currentTripId);
+    const shareUrl = window.location.origin + window.location.pathname + '?trip_id=' + (trip ? trip.id : '');
+    navigator.clipboard.writeText(shareUrl).then(() => {
+      showToast('已複製專屬分享連結！');
+    }).catch(() => {
+      showToast('複製失敗，請手動複製網址', true);
+    });
+    return;
+  }
   if (action === 'add-collaborator') {
-    const inputEl = document.getElementById('collaborator-email-input');
-    const email = (inputEl ? inputEl.value : ui.collaboratorEmail || '').trim().toLowerCase();
-    if (!email) {
-      showToast('請輸入 Email', true);
+    const emailInput = document.getElementById('share-email-input');
+    const email = emailInput ? emailInput.value.trim().toLowerCase() : '';
+
+    if (!email || !email.includes('@')) {
+      showToast('請輸入有效的 Email', true);
       return;
     }
 
     const trip = state.trips.find(t => t.id === state.currentTripId);
     if (!trip) return;
 
-    const { error } = await supabaseClient
-      .from('trip_collaborators')
-      .upsert({
-        trip_id: trip.id,
-        email: email,
-        role: 'editor'
-      }, { onConflict: 'trip_id,email' });
+    try {
+      const { error } = await supabaseClient
+        .from('trip_collaborators')
+        .upsert({
+          trip_id: trip.id,
+          email: email,
+          role: 'editor'
+        }, { onConflict: 'trip_id,email' });
 
-    if (error) {
-      console.error('Add collaborator error:', error);
-      showToast('邀請失敗：' + error.message, true);
-    } else {
-      showToast('已發送邀請！夥伴登入後即可協作此行程');
+      if (error) throw error;
+
+      showToast(`已成功邀請 ${email} 成為協作者！`);
       ui.collaboratorEmail = '';
+      ui.shareModal = false;
       render();
+    } catch (err) {
+      console.error('Invite error:', err);
+      showToast('邀請失敗：' + (err.message || '未知錯誤'), true);
     }
     return;
   }
 
-  if (action === 'remove-collaborator') {
+  if (action === 'leave-collaboration') {
     const id = btn.dataset.id;
-    if (!id) return;
-
-    const { error } = await supabaseClient
-      .from('trip_collaborators')
-      .delete()
-      .eq('id', id);
-
-    if (error) {
-      showToast('移除失敗：' + error.message, true);
-    } else {
-      showToast('已移除協作者');
+    confirmDialog('確定要退出此行程的協作嗎？退出後您將無法繼續查看或編輯。', async () => {
+      if (currentUser) {
+        try {
+          await supabaseClient
+            .from('trip_collaborators')
+            .delete()
+            .eq('trip_id', id)
+            .or(`email.eq.${(currentUser.email || '').toLowerCase()},user_id.eq.${currentUser.id}`);
+        } catch (err) {
+          console.error('Leave collab error:', err);
+        }
+      }
+      state.trips = state.trips.filter(t => t.id !== id);
+      if (state.currentTripId === id) {
+        state.currentTripId = null;
+        state.view = 'list';
+      }
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(state.trips));
       render();
+      showToast('已退出行程協作');
+    }, true);
+    return;
+  }
+
+  if (action === 'toggle-subgroup') {
+    const catId = btn.dataset.cat;
+    const groupName = btn.dataset.group;
+    toggleSubgroup(catId, groupName);
+    return;
+  }
+
+  if(action === 'create-trip'){
+    const dest = (ui.draft.destination||'').trim();
+    if(!dest){
+      showToast('請輸入目的地！', true);
+      return;
     }
-    return;
-  }
-
-  if (action === 'copy-share-url') {
-    const url = btn.dataset.url;
-    navigator.clipboard.writeText(url).then(() => {
-      showToast('已複製邀請連結到剪貼簿！');
-    }).catch(() => {
-      showToast('複製失敗，請手動複製連結', true);
-    });
-    return;
-  }
-
-  if(action==='open-trip'){
-    state.currentTripId = btn.dataset.id;
-    state.view = 'trip';
-    render();
-    window.scrollTo(0,0);
-    return;
-  }
-
-  if(action==='back-list'){
-    state.view = 'list';
-    state.currentTripId = null;
-    ui.summaryOpen.clear();
-    render();
-    window.scrollTo(0,0);
-    return;
-  }
-
-  if(action==='create-trip'){
-    const dest = (ui.draft.destination || '').trim();
-    if(!dest){ showToast('請填寫目的地', true); return; }
     const newT = {
       id: uid(),
       user_id: currentUser ? currentUser.id : null,
       destination: dest,
-      startDate: ui.draft.start || '',
-      endDate: ui.draft.end || '',
+      startDate: ui.draft.start||'',
+      endDate: ui.draft.end||'',
       categories: emptyCategories(),
       updated_at: new Date().toISOString(),
       role: 'owner'
@@ -2241,16 +2153,37 @@ document.addEventListener('click', async (e) => {
     state.view = 'trip';
     scheduleSave();
     render();
-    showToast('已建立行程');
+    showToast('行程建立成功！');
     return;
   }
 
-  if(action==='delete-trip'){
+  if(action === 'open-trip'){
+    if(e.target.closest('.trip-delete') || e.target.closest('.drag-handle')) return;
     const id = btn.dataset.id;
-    const ok = await confirmDialog('確定要刪除這趟行程嗎？刪除後無法復原。', true);
-    if(ok){
+    state.currentTripId = id;
+    state.view = 'trip';
+    render();
+    window.scrollTo(0,0);
+    return;
+  }
+
+  if(action === 'back-list'){
+    state.view = 'list';
+    state.currentTripId = null;
+    render();
+    window.scrollTo(0,0);
+    return;
+  }
+
+  if(action === 'delete-trip'){
+    const id = btn.dataset.id;
+    confirmDialog('確定要刪除這趟行程嗎？此操作無法撤銷。', async ()=>{
       if (currentUser) {
-        await supabaseClient.from('trips').delete().eq('id', id);
+        try {
+          await supabaseClient.from('trips').delete().eq('id', id);
+        } catch (err) {
+          console.error('Delete remote trip error:', err);
+        }
       }
 
       state.trips = state.trips.filter(t=>t.id!==id);
@@ -2258,247 +2191,250 @@ document.addEventListener('click', async (e) => {
         state.currentTripId = null;
         state.view = 'list';
       }
-      scheduleSave();
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(state.trips));
       render();
-      showToast('已刪除行程');
-    }
+      showToast('行程已刪除');
+    }, true);
     return;
   }
 
-  if (action === 'leave-collaboration') {
-    const id = btn.dataset.id;
-    const ok = await confirmDialog('確定要退出這趟行程的協作嗎？', true);
-    if (ok && currentUser) {
-      await supabaseClient
-        .from('trip_collaborators')
-        .delete()
-        .eq('trip_id', id)
-        .eq('user_id', currentUser.id);
-
-      state.trips = state.trips.filter(t => t.id !== id);
-      if (state.currentTripId === id) {
-        state.currentTripId = null;
-        state.view = 'list';
-      }
-      scheduleSave();
-      render();
-      showToast('已退出協作');
-    }
+  if(action === 'export-data'){
+    const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(state.trips, null, 2));
+    const dlAnchor = document.createElement('a');
+    dlAnchor.setAttribute("href", dataStr);
+    dlAnchor.setAttribute("download", `旅行規劃備份_${new Date().toISOString().slice(0,10)}.json`);
+    document.body.appendChild(dlAnchor);
+    dlAnchor.click();
+    dlAnchor.remove();
+    showToast('已匯出JSON備份檔！');
     return;
   }
 
-  if(action==='toggle-item'){
+  if(action === 'trigger-import'){
+    document.getElementById('import-input').click();
+    return;
+  }
+
+  if(action === 'confirm-ok'){
+    if(ui.confirm && typeof ui.confirm.onOk === 'function'){
+      const fn = ui.confirm.onOk;
+      ui.confirm = null;
+      fn();
+    }
+    return;
+  }
+  if(action === 'confirm-cancel'){
+    ui.confirm = null;
+    render();
+    return;
+  }
+
+  /* 行程內頁動作 */
+  const trip = state.trips.find(t=>t.id === state.currentTripId);
+  if(!trip) return;
+
+  if(action === 'toggle-item'){
     const cat = btn.dataset.cat;
-    const item = btn.dataset.item;
-    const trip = state.trips.find(t=>t.id===state.currentTripId);
-    if(trip && trip.categories[cat]){
-      const it = trip.categories[cat].items.find(x=>x.id===item);
-      if(it){
-        it.checked = !it.checked;
-        scheduleSave();
-        render();
-      }
+    const itemId = btn.dataset.item;
+    const items = (trip.categories[cat] && trip.categories[cat].items) || [];
+    const it = items.find(i=>i.id===itemId);
+    if(it){
+      it.checked = !it.checked;
+      scheduleSave();
+      render();
     }
     return;
   }
 
-  if(action==='toggle-detail'){
-    const key = btn.dataset.cat+'|'+btn.dataset.item;
+  if(action === 'delete-item'){
+    const cat = btn.dataset.cat;
+    const itemId = btn.dataset.item;
+    if(trip.categories[cat] && trip.categories[cat].items){
+      trip.categories[cat].items = trip.categories[cat].items.filter(i=>i.id!==itemId);
+      ui.expanded.delete(cat+'|'+itemId);
+      scheduleSave();
+      render();
+    }
+    return;
+  }
+
+  if(action === 'toggle-detail'){
+    const cat = btn.dataset.cat;
+    const itemId = btn.dataset.item;
+    const key = cat+'|'+itemId;
     if(ui.expanded.has(key)) ui.expanded.delete(key);
     else ui.expanded.add(key);
     render();
     return;
   }
 
-  if(action==='toggle-subgroup'){
+  if(action === 'toggle-bulk'){
     const cat = btn.dataset.cat;
-    const group = btn.dataset.group;
-    toggleSubgroup(cat, group);
-    return;
-  }
-
-  if(action==='delete-item'){
-    const cat = btn.dataset.cat;
-    const item = btn.dataset.item;
-    const trip = state.trips.find(t=>t.id===state.currentTripId);
-    if(trip && trip.categories[cat]){
-      trip.categories[cat].items = trip.categories[cat].items.filter(x=>x.id!==item);
-      scheduleSave();
-      render();
+    if(ui.bulkOpen.has(cat)){
+      ui.bulkOpen.delete(cat);
+    } else {
+      ui.bulkOpen.add(cat);
+      if(!ui.bulkDraft[cat]) ui.bulkDraft[cat] = '';
     }
-    return;
-  }
-
-  if(action==='add-item'){
-    const cat = btn.dataset.cat;
-    const trip = state.trips.find(t=>t.id===state.currentTripId);
-    if(!trip) return;
-    const draft = ui.newItem[cat] || {};
-    const text = (draft.text || '').trim();
-    if(!text && cat!=='expenses'){
-      showToast('請輸入項目名稱', true);
-      return;
-    }
-    if(cat==='expenses' && !text && !draft.amount){
-      showToast('請輸入名稱或金額', true);
-      return;
-    }
-
-    const items = trip.categories[cat].items;
-    const inheritedDate = (items.length > 0 && items[items.length - 1].date) ? items[items.length - 1].date : (trip.startDate || '');
-
-    const newItem = {
-      id: uid(),
-      text,
-      checked: false,
-      note: draft.note||'',
-      link: draft.link||'',
-      day: draft.day||'',
-      amount: draft.amount != null ? draft.amount : '',
-      currency: draft.currency||'',
-      category: draft.category||'',
-      payment: draft.payment||'',
-      date: draft.date != null ? draft.date : inheritedDate,
-      subgroup: draft.subgroup || ''
-    };
-
-    trip.categories[cat].items.push(newItem);
-    ui.newItem[cat] = {};
-    scheduleSave();
     render();
     return;
   }
 
-  if(action === 'add-subgroup'){
-    const cat = btn.dataset.cat;
-    const trip = state.trips.find(t => t.id === state.currentTripId);
-    if (!trip || !trip.categories[cat]) return;
-
-    const inputEl = document.querySelector(`input[data-field="new-subgroup-input"][data-cat="${cat}"]`);
-    const newGroup = inputEl ? inputEl.value.trim() : '';
-
-    if (!newGroup) {
-      showToast('請輸入分類名稱', true);
-      return;
-    }
-
-    if (!trip.categories[cat].subgroups) {
-      trip.categories[cat].subgroups = [];
-    }
-
-    if (trip.categories[cat].subgroups.includes(newGroup)) {
-      showToast('已有同名的分類', true);
-      return;
-    }
-
-    trip.categories[cat].subgroups.push(newGroup);
-    ui.newSubgroup = '';
-    scheduleSave();
-    render();
-    showToast(`已新增分類「${newGroup}」`);
-    return;
-  }
-
-  if(action==='toggle-bulk'){
-    const cat = btn.dataset.cat;
-    if(ui.bulkOpen.has(cat)) ui.bulkOpen.delete(cat);
-    else ui.bulkOpen.add(cat);
-    render();
-    return;
-  }
-
-  if(action==='cancel-bulk'){
+  if(action === 'cancel-bulk'){
     const cat = btn.dataset.cat;
     ui.bulkOpen.delete(cat);
-    ui.bulkDraft[cat] = '';
     render();
     return;
   }
 
-  if(action==='confirm-bulk'){
+  if(action === 'confirm-bulk'){
     const cat = btn.dataset.cat;
-    const trip = state.trips.find(t=>t.id===state.currentTripId);
-    if(!trip) return;
-    const raw = (ui.bulkDraft[cat] || '').trim();
-    if(!raw){ showToast('內容空白', true); return; }
+    const text = (ui.bulkDraft[cat] || '').trim();
+    if(!text){
+      showToast('請先貼上內容！', true);
+      return;
+    }
+    const lines = text.split(/\r?\n/).map(l=>l.trim()).filter(Boolean);
+    const isExpense = cat === 'expenses';
 
-    const lines = raw.split(/\r?\n/).map(l=>l.trim()).filter(Boolean);
-    let count = 0;
-    const isExpense = (cat==='expenses');
-    const items = trip.categories[cat].items;
-    const inheritedDate = (items.length > 0 && items[items.length - 1].date) ? items[items.length - 1].date : (trip.startDate || '');
+    let lastInheritedDate = trip.startDate || '';
+    if(isExpense){
+      const existingItems = (trip.categories.expenses && trip.categories.expenses.items) || [];
+      if(existingItems.length > 0 && existingItems[existingItems.length - 1].date){
+        lastInheritedDate = existingItems[existingItems.length - 1].date;
+      }
+    }
 
+    let addedCount = 0;
     lines.forEach(line=>{
       if(isExpense){
-        const parsed = parseExpenseLine(line, trip, inheritedDate);
+        const parsed = parseExpenseLine(line, trip, lastInheritedDate);
         if(parsed){
-          trip.categories[cat].items.push(parsed);
-          count++;
+          trip.categories.expenses.items.push(parsed);
+          if(parsed.date) lastInheritedDate = parsed.date;
+          addedCount++;
         }
       } else {
         trip.categories[cat].items.push({
           id: uid(),
           text: line,
           checked: false,
-          note: '', link: '', day: '', amount: '', currency: '', category: '', payment: '', date: ''
+          note: '',
+          link: ''
         });
-        count++;
+        addedCount++;
       }
     });
 
-    ui.bulkOpen.delete(cat);
     ui.bulkDraft[cat] = '';
+    ui.bulkOpen.delete(cat);
     scheduleSave();
     render();
-    showToast(`已成功匯入 ${count} 筆`);
+    showToast(`成功批次加入 ${addedCount} 個項目！`);
     return;
   }
 
-  if(action==='toggle-summary'){
-    const panel = btn.dataset.panel;
-    if(ui.summaryOpen.has(panel)) ui.summaryOpen.delete(panel);
-    else ui.summaryOpen.add(panel);
+  if(action === 'add-subgroup') {
+    const cat = btn.dataset.cat;
+    const newGroupTitle = (ui.newSubgroup || '').trim();
+    if(!newGroupTitle) {
+      showToast('請輸入分類名稱！', true);
+      return;
+    }
+    
+    if(!trip.categories[cat].subgroups) {
+      trip.categories[cat].subgroups = [];
+    }
+    if(trip.categories[cat].subgroups.includes(newGroupTitle)) {
+      showToast('已存在同名分類！', true);
+      return;
+    }
+
+    trip.categories[cat].subgroups.push(newGroupTitle);
+    ui.newSubgroup = '';
+    scheduleSave();
+    render();
+    showToast(`成功新增分類「${newGroupTitle}」！`);
+    return;
+  }
+
+  if(action === 'add-item'){
+    const cat = btn.dataset.cat;
+    const draft = ui.newItem[cat] || {};
+    const text = (draft.text||'').trim();
+    const isExpense = cat === 'expenses';
+    const isExchange = cat === 'exchange';
+
+    if(!isExpense && !isExchange && !text){
+      showToast('請輸入項目名稱！', true);
+      return;
+    }
+    if(isExpense && !text && draft.amount==null){
+      showToast('請至少輸入名稱或金額！', true);
+      return;
+    }
+
+    if(isExpense){
+      const items = trip.categories.expenses.items;
+      const inheritedDate = (items.length > 0 && items[items.length - 1].date) ? items[items.length - 1].date : (trip.startDate || '');
+      const itemDate = draft.date != null ? draft.date : inheritedDate;
+      trip.categories.expenses.items.push({
+        id: uid(),
+        text: text,
+        checked: false,
+        note: '',
+        link: '',
+        date: itemDate,
+        amount: draft.amount != null ? draft.amount : '',
+        currency: draft.currency || '',
+        category: draft.category || '',
+        payment: draft.payment || ''
+      });
+    } else if(isExchange){
+      trip.categories.exchange.items.push({
+        id: uid(),
+        text: text,
+        checked: false,
+        note: '',
+        link: '',
+        amount: draft.amount != null ? draft.amount : '',
+        currency: draft.currency || ''
+      });
+    } else {
+      const isPacking = cat === 'packing';
+      const isShopping = cat === 'shopping';
+      const itemObj = {
+        id: uid(),
+        text: text,
+        checked: false,
+        note: '',
+        link: '',
+        day: draft.day || ''
+      };
+
+      if (isPacking || isShopping) {
+        itemObj.subgroup = draft.subgroup || '';
+      }
+
+      trip.categories[cat].items.push(itemObj);
+    }
+
+    ui.newItem[cat] = {};
+    scheduleSave();
     render();
     return;
   }
 
-  if(action==='export-data'){
-    const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(state.trips, null, 2));
-    const dlAnchor = document.createElement('a');
-    dlAnchor.setAttribute("href", dataStr);
-    dlAnchor.setAttribute("download", `travel_planner_backup_${new Date().toISOString().slice(0,10)}.json`);
-    document.body.appendChild(dlAnchor);
-    dlAnchor.click();
-    dlAnchor.remove();
-    showToast('備份檔已匯出');
-    return;
-  }
-
-  if(action==='trigger-import'){
-    document.getElementById('import-input').click();
-    return;
-  }
-
-  if(action==='cancel-dialog'){
-    if(ui.confirm){
-      ui.confirm.resolve(false);
-      ui.confirm = null;
-      render();
-    }
-    return;
-  }
-
-  if(action==='ok-dialog'){
-    if(ui.confirm){
-      ui.confirm.resolve(true);
-      ui.confirm = null;
-      render();
-    }
+  if(action === 'toggle-summary'){
+    const target = btn.dataset.target;
+    if(ui.summaryOpen.has(target)) ui.summaryOpen.delete(target);
+    else ui.summaryOpen.add(target);
+    render();
     return;
   }
 });
 
-/* ===================== 輸入表單即時監聽 ===================== */
+/* 監聽輸入框變更 (Input & Change) */
 document.addEventListener('input', (e)=>{
   const target = e.target;
   const field = target.dataset.field;
@@ -2508,119 +2444,173 @@ document.addEventListener('input', (e)=>{
   if(field === 'new-start') ui.draft.start = target.value;
   if(field === 'new-end') ui.draft.end = target.value;
 
-  if(field === 'new-subgroup-input') ui.newSubgroup = target.value;
-
-  if(field === 'trip-destination' || field === 'trip-start' || field === 'trip-end'){
-    const trip = state.trips.find(t=>t.id===state.currentTripId);
-    if(trip){
-      if(field==='trip-destination') trip.destination = target.value;
-      if(field==='trip-start') trip.startDate = target.value;
-      if(field==='trip-end') trip.endDate = target.value;
-      scheduleSave();
-    }
-    return;
-  }
-
   if(field === 'bulk-text'){
     const cat = target.dataset.cat;
     ui.bulkDraft[cat] = target.value;
     return;
   }
 
-  const cat = target.dataset.cat;
-  if(cat && field.startsWith('new-')){
+  if(field === 'new-subgroup-input') {
+    ui.newSubgroup = target.value;
+    return;
+  }
+
+  if(field.startsWith('new-')){
+    const cat = target.dataset.cat;
     if(!ui.newItem[cat]) ui.newItem[cat] = {};
-    const key = field.replace('new-', '');
-    ui.newItem[cat][key] = target.value;
+    if(field === 'new-text') ui.newItem[cat].text = target.value;
+    if(field === 'new-amount') ui.newItem[cat].amount = target.value;
+    if(field === 'new-currency') ui.newItem[cat].currency = target.value;
+    if(field === 'new-category') ui.newItem[cat].category = target.value;
+    if(field === 'new-payment') ui.newItem[cat].payment = target.value;
+    if(field === 'new-date') ui.newItem[cat].date = target.value;
+    if(field === 'new-day') ui.newItem[cat].day = target.value;
+    if(field === 'new-subgroup') ui.newItem[cat].subgroup = target.value;
     return;
   }
 
-  const itemBlock = target.closest('.item-block');
-  const shoppingCard = target.closest('.shopping-card');
+  const trip = state.trips.find(t=>t.id === state.currentTripId);
+  if(!trip) return;
 
-  if(itemBlock){
-    const itemCat = itemBlock.dataset.cat;
-    const itemId = itemBlock.dataset.item;
-    const trip = state.trips.find(t=>t.id===state.currentTripId);
-    if(trip && trip.categories[itemCat]){
-      const item = trip.categories[itemCat].items.find(x=>x.id===itemId);
-      if(item){
-        item[field] = target.value;
-        scheduleSave();
-      }
-    }
+  if(field === 'trip-destination'){
+    trip.destination = target.value;
+    scheduleSave();
+    return;
+  }
+  if(field === 'trip-start'){
+    trip.startDate = target.value;
+    scheduleSave();
+    return;
+  }
+  if(field === 'trip-end'){
+    trip.endDate = target.value;
+    scheduleSave();
     return;
   }
 
-  if(shoppingCard) {
-    const itemBlock = target.closest('[data-item]');
-    if(itemBlock) {
-      const itemId = itemBlock.dataset.item;
-      const trip = state.trips.find(t=>t.id===state.currentTripId);
-      if(trip && trip.categories.shopping){
-        const item = trip.categories.shopping.items.find(x=>x.id===itemId);
-        if(item){
-          item[field] = target.value;
-          scheduleSave();
-        }
-      }
-    }
-  }
-
-  const subgroupHeader = target.closest('.subgroup-header');
-  if(subgroupHeader && target.classList.contains('subgroup-title-input')){
+  if (target.classList.contains('subgroup-title-input')) {
     const catId = target.dataset.cat;
-    const idx = parseInt(target.dataset.index, 10);
-    const newName = target.value;
-    const trip = state.trips.find(t=>t.id===state.currentTripId);
-    if(trip && trip.categories[catId]){
-      const subgroups = trip.categories[catId].subgroups || [];
-      const oldName = subgroups[idx];
-      if(oldName !== undefined){
-        subgroups[idx] = newName;
-        (trip.categories[catId].items || []).forEach(item => {
-          if(item.subgroup === oldName) item.subgroup = newName;
-        });
-        scheduleSave();
-      }
+    const index = parseInt(target.dataset.index, 10);
+    const newTitle = target.value;
+    if (trip.categories[catId] && trip.categories[catId].subgroups && trip.categories[catId].subgroups[index] !== undefined) {
+      const oldTitle = trip.categories[catId].subgroups[index];
+      trip.categories[catId].subgroups[index] = newTitle;
+      
+      (trip.categories[catId].items || []).forEach(item => {
+        if (item.subgroup === oldTitle) {
+          item.subgroup = newTitle;
+        }
+      });
+      scheduleSave();
+    }
+    return;
+  }
+
+  const itemBlock = target.closest('[data-item]');
+  if(itemBlock){
+    const cat = itemBlock.dataset.cat;
+    const itemId = itemBlock.dataset.item;
+    const items = (trip.categories[cat] && trip.categories[cat].items) || [];
+    const it = items.find(i=>i.id===itemId);
+    if(it){
+      if(field === 'text') it.text = target.value;
+      if(field === 'amount') it.amount = target.value;
+      if(field === 'currency') it.currency = target.value;
+      if(field === 'category') it.category = target.value;
+      if(field === 'payment') it.payment = target.value;
+      if(field === 'date') it.date = target.value;
+      if(field === 'day') it.day = target.value;
+      if(field === 'note') it.note = target.value;
+      if(field === 'link') it.link = target.value;
+      scheduleSave();
     }
   }
 });
 
-/* ===================== 備份匯入 ===================== */
+/* 檔案匯入處理 */
 document.getElementById('import-input').addEventListener('change', (e)=>{
   const file = e.target.files[0];
   if(!file) return;
   const reader = new FileReader();
-  reader.onload = async (evt)=>{
+  reader.onload = (evt)=>{
     try{
       const imported = JSON.parse(evt.target.result);
-      if(!Array.isArray(imported)) throw new Error('格式錯誤');
-      const formatted = imported.map(t=>({
+      if(!Array.isArray(imported)) throw new Error('格式不正確');
+      
+      const formatted = imported.map(t => ({
         ...t,
-        id: t.id || uid(),
         categories: ensureCategories(t.categories)
       }));
 
-      const ok = await confirmDialog(`準備匯入 ${formatted.length} 趟行程，這會覆蓋目前的列表，確定嗎？`, true);
-      if(ok){
-        state.trips = formatted;
-        state.view = 'list';
-        state.currentTripId = null;
-        scheduleSave();
-        render();
-        showToast('已成功匯入備份檔');
-      }
-    }catch(err){
-      showToast('匯入失敗：請確認檔案是否為有效的備份 JSON 檔', true);
+      state.trips = formatted;
+      scheduleSave();
+      render();
+      showToast('備份匯入成功！');
+    } catch(err){
+      showToast('檔案格式錯誤，匯入失敗', true);
     }
-    e.target.value = '';
   };
   reader.readAsText(file);
+  e.target.value = '';
 });
 
-/* 初始化 */
-render();
+/* 圖片處理邏輯 */
+document.addEventListener('click', (e) => {
+  const wrap = e.target.closest('.shopping-img-wrap');
+  if (wrap) {
+    const itemId = wrap.getAttribute('data-item-id');
+    const imgSrc = wrap.getAttribute('data-img-src');
+
+    if (imgSrc) {
+      openImageModal(imgSrc);
+    } else {
+      const input = document.getElementById(`img-input-${itemId}`);
+      if (input) input.click();
+    }
+  }
+});
+
+function openImageModal(src) {
+  ui.modalImageSrc = src;
+  render();
+}
+
+function closeImageModal() {
+  ui.modalImageSrc = null;
+  render();
+}
+
+function handleImageUpload(event, tripId, itemId) {
+  const file = event.target.files[0];
+  if (!file) return;
+
+  if (file.size > 5 * 1024 * 1024) {
+    showToast('圖片大小不能超過 5MB', true);
+    return;
+  }
+
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    const base64Image = e.target.result;
+    
+    const trip = state.trips.find(t => t.id === tripId);
+    if (!trip || !trip.categories.shopping) return;
+
+    const item = trip.categories.shopping.items.find(i => i.id === itemId);
+    if (item) {
+      item.image = base64Image;
+      scheduleSave();
+      render();
+      showToast('圖片上傳成功！');
+    }
+  };
+  reader.readAsDataURL(file);
+}
+
+/* 初始載入與執行 */
+(async function init() {
+  render();
+})();
 </script>
 </body>
 </html>
