@@ -1318,7 +1318,7 @@ function parseExpenseLineLegacy(line, trip, inheritedDate){
   const dateFull = tokens[0] && tokens[0].match(/^(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})$/);
   const dateShort = tokens[0] && tokens[0].match(/^(\d{1,2})[\/\-](\d{1,2})$/);
   if(dateFull){
-    item.date = `${dateFull[1]}-${dateShort[2].padStart(2,'0')}-${dateFull[3].padStart(2,'0')}`;
+    item.date = `${dateFull[1]}-${dateShort[2].padStart(2,'0')}-${dateShort[3].padStart(2,'0')}`;
     tokens.shift();
   } else if(dateShort){
     let year = new Date().getFullYear();
@@ -1942,25 +1942,68 @@ function renderShareModal() {
           <button class="modal-btn" data-action="close-share-modal">關閉</button>
         </div>
       </div>
-    </div>
-  `;
+    </div>`;
 }
 
-/* ===================== 全螢幕大圖 Modal 渲染 ===================== */
-function renderImageModal() {
+function renderModal() {
+  if (!ui.confirm) return '';
+  return `
+    <div class="modal-overlay">
+      <div class="modal-box">
+        <div class="modal-msg">${escapeHtml(ui.confirm.msg)}</div>
+        <div class="modal-btns">
+          <button class="modal-btn" data-action="modal-cancel">取消</button>
+          <button class="modal-btn ${ui.confirm.danger ? 'danger' : 'primary'}" data-action="modal-ok">確定</button>
+        </div>
+      </div>
+    </div>`;
+}
+
+function renderToast() {
+  if (!ui.toast) return '';
+  return `<div class="toast ${ui.toast.error ? 'error' : ''}">${escapeHtml(ui.toast.msg)}</div>`;
+}
+
+function renderImageViewModal() {
   if (!ui.modalImageSrc) return '';
   return `
     <div class="image-modal-overlay" onclick="closeImageModal()">
       <div class="image-modal-content" onclick="event.stopPropagation()">
-        <button class="image-modal-close" onclick="closeImageModal()">×</button>
-        <img src="${escapeAttr(ui.modalImageSrc)}" alt="大圖檢視">
+        <button class="image-modal-close" onclick="closeImageModal()">✕</button>
+        <img src="${ui.modalImageSrc}" alt="大圖檢視">
       </div>
     </div>
   `;
 }
 
+function render(){
+  const app = document.getElementById('app');
+  if(!app) return;
+  if(state.view === 'list'){
+    app.innerHTML = renderListView() + renderModal() + renderToast() + renderShareModal() + renderImageViewModal();
+  } else {
+    app.innerHTML = renderTripView() + renderModal() + renderToast() + renderShareModal() + renderImageViewModal();
+  }
+}
+
+/* ===================== 全域事件與互動綁定 ===================== */
+function showToast(msg, error = false){
+  ui.toast = { msg, error };
+  render();
+  setTimeout(()=>{
+    if(ui.toast && ui.toast.msg === msg){
+      ui.toast = null;
+      render();
+    }
+  }, 3000);
+}
+
+function openConfirm(msg, onOk, danger=false){
+  ui.confirm = { msg, onOk, danger };
+  render();
+}
+
 function openImageModal(src) {
-  if (!src) return;
   ui.modalImageSrc = src;
   render();
 }
@@ -1969,476 +2012,352 @@ function closeImageModal() {
   render();
 }
 
-/* ===================== Toast / 訊息提示 ===================== */
-function showToast(msg, isError = false) {
-  ui.toast = { msg, isError };
-  render();
-  setTimeout(() => {
-    if (ui.toast && ui.toast.msg === msg) {
-      ui.toast = null;
-      render();
-    }
-  }, 3000);
-}
-
-function renderToast() {
-  if (!ui.toast) return '';
-  return `<div class="toast ${ui.toast.isError ? 'error' : ''}">${escapeHtml(ui.toast.msg)}</div>`;
-}
-
-/* ===================== 圖片上傳與點擊處理 ===================== */
-function handleImageUpload(e, tripId, itemId) {
-  const file = e.target.files[0];
+function handleImageUpload(event, tripId, itemId) {
+  const file = event.target.files[0];
   if (!file) return;
 
   if (file.size > 2 * 1024 * 1024) {
-    showToast('圖片大小請限制在 2MB 以內', true);
+    showToast('圖片檔案過大（限制 2MB 內），請選擇較小的圖片', true);
     return;
   }
 
   const reader = new FileReader();
-  reader.onload = function(event) {
-    const base64 = event.target.result;
+  reader.onload = function(e) {
+    const base64Str = e.target.result;
     const trip = state.trips.find(t => t.id === tripId);
     if (!trip || !trip.categories.shopping) return;
 
     const item = trip.categories.shopping.items.find(i => i.id === itemId);
-    if (!item) return;
-
-    item.image = base64;
-    scheduleSave();
-    render();
-    showToast('商品圖片上傳成功');
+    if (item) {
+      item.image = base64Str;
+      scheduleSave();
+      render();
+      showToast('商品照片上傳成功！');
+    }
   };
   reader.readAsDataURL(file);
 }
 
-function handlePhotoContextMenu(e, tripId, itemId) {
-  e.preventDefault();
-  const trip = state.trips.find(t => t.id === tripId);
-  if (!trip || !trip.categories.shopping) return;
-  const item = trip.categories.shopping.items.find(i => i.id === itemId);
-  if (!item) return;
+document.addEventListener('click', (e)=>{
+  const target = e.target.closest('[data-action]');
+  if(!target) {
+    const photoWrap = e.target.closest('.shopping-img-wrap');
+    if (photoWrap && !e.target.classList.contains('img-upload-input')) {
+      const imgSrc = photoWrap.getAttribute('data-img-src');
+      if (imgSrc) {
+        openImageModal(imgSrc);
+      } else {
+        const itemId = photoWrap.getAttribute('data-item-id');
+        const fileInput = document.getElementById('img-input-' + itemId);
+        if (fileInput) fileInput.click();
+      }
+    }
+    return;
+  }
 
-  if (item.image) {
-    if (confirm('是否要清除這張商品照片？')) {
-      item.image = '';
+  const action = target.getAttribute('data-action');
+  
+  if(action === 'auth-login'){
+    signInWithGoogle();
+  } else if(action === 'auth-logout'){
+    signOut();
+  } else if(action === 'open-share-modal'){
+    ui.shareModal = true;
+    render();
+  } else if(action === 'close-share-modal'){
+    ui.shareModal = false;
+    render();
+  } else if(action === 'copy-share-url'){
+    const currentTrip = state.trips.find(t => t.id === state.currentTripId);
+    const shareUrl = window.location.origin + window.location.pathname + '?trip_id=' + (currentTrip ? currentTrip.id : '');
+    navigator.clipboard.writeText(shareUrl).then(()=>{
+      showToast('已複製協作連結！');
+    }).catch(()=>{
+      showToast('複製失敗，請手動複製', true);
+    });
+  } else if(action === 'open-trip'){
+    const id = target.getAttribute('data-id');
+    state.currentTripId = id;
+    state.view = 'trip';
+    render();
+  } else if(action === 'back-list'){
+    state.view = 'list';
+    state.currentTripId = null;
+    window.history.replaceState({}, document.title, window.location.pathname);
+    render();
+  } else if(action === 'create-trip'){
+    const dest = (ui.draft.destination||'').trim();
+    if(!dest){
+      showToast('請輸入行程目的地', true);
+      return;
+    }
+    const newTrip = {
+      id: uid(),
+      user_id: currentUser ? currentUser.id : null,
+      destination: dest,
+      startDate: ui.draft.start || '',
+      endDate: ui.draft.end || '',
+      categories: emptyCategories(),
+      updated_at: new Date().toISOString()
+    };
+    state.trips.push(newTrip);
+    ui.draft = {destination:'', start:'', end:''};
+    scheduleSave();
+    state.currentTripId = newTrip.id;
+    state.view = 'trip';
+    render();
+    showToast('成功建立行程！');
+  } else if(action === 'delete-trip'){
+    const id = target.getAttribute('data-id');
+    openConfirm('確定要刪除這個行程嗎？此動作無法復原。', async ()=>{
+      state.trips = state.trips.filter(t=>t.id!==id);
+      if(currentUser){
+        await supabaseClient.from('trips').delete().eq('id', id);
+      }
       scheduleSave();
-      render();
-      showToast('已清除商品照片');
-    }
-  }
-}
-
-/* ===================== 事件監聽與主渲染迴圈 ===================== */
-function render(){
-  const app = document.getElementById('app');
-  if(!app) return;
-
-  if(state.view === 'list'){
-    app.innerHTML = renderListView();
-  } else if(state.view === 'trip'){
-    app.innerHTML = renderTripView() + renderShareModal() + renderImageModal() + renderToast();
-  }
-}
-
-document.addEventListener('click', async (e) => {
-  const btn = e.target.closest('[data-action]');
-  if(btn){
-    const action = btn.getAttribute('data-action');
-    if(action === 'noop') return;
-
-    if(action === 'auth-login'){
-      await signInWithGoogle();
-      return;
-    }
-    if(action === 'auth-logout'){
-      await signOut();
-      return;
-    }
-    if(action === 'open-share-modal'){
-      ui.shareModal = true;
-      render();
-      return;
-    }
-    if(action === 'close-share-modal'){
-      ui.shareModal = false;
-      render();
-      return;
-    }
-    if(action === 'copy-share-url'){
-      const input = btn.previousElementSibling;
-      if(input) {
-        input.select();
-        document.execCommand('copy');
-        showToast('協作連結已複製到剪貼簿！');
-      }
-      return;
-    }
-    if(action === 'export-data'){
-      const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(state.trips, null, 2));
-      const dlAnchor = document.createElement('a');
-      dlAnchor.setAttribute("href", dataStr);
-      dlAnchor.setAttribute("download", "trip_planner_backup_" + new Date().toISOString().slice(0,10) + ".json");
-      document.body.appendChild(dlAnchor);
-      dlAnchor.click();
-      dlAnchor.remove();
-      showToast('備份檔案已匯出');
-      return;
-    }
-    if(action === 'trigger-import'){
-      document.getElementById('import-input').click();
-      return;
-    }
-    if(action === 'open-trip'){
-      const id = btn.getAttribute('data-id');
-      state.currentTripId = id;
-      state.view = 'trip';
-      render();
-      return;
-    }
-    if(action === 'delete-trip'){
-      const id = btn.getAttribute('data-id');
-      if(confirm('確定要永久刪除這個行程嗎？')){
-        state.trips = state.trips.filter(t=>t.id!==id);
-        if(currentUser) {
-          await supabaseClient.from('trips').delete().eq('id', id);
-        }
-        scheduleSave();
-        state.view = 'list';
-        state.currentTripId = null;
-        render();
-        showToast('行程已刪除');
-      }
-      return;
-    }
-    if(action === 'leave-collaboration'){
-      const id = btn.getAttribute('data-id');
-      if(confirm('確定要退出此協作行程嗎？')){
-        state.trips = state.trips.filter(t=>t.id!==id);
-        if(currentUser) {
-          await supabaseClient.from('trip_collaborators').delete().eq('trip_id', id).eq('user_id', currentUser.id);
-        }
-        scheduleSave();
-        state.view = 'list';
-        state.currentTripId = null;
-        render();
-        showToast('已退出協作');
-      }
-      return;
-    }
-    if(action === 'back-list'){
       state.view = 'list';
       state.currentTripId = null;
       render();
-      return;
-    }
-    if(action === 'create-trip'){
-      const destInput = document.querySelector('[data-field="new-destination"]');
-      const startInput = document.querySelector('[data-field="new-start"]');
-      const endInput = document.querySelector('[data-field="new-end"]');
-      const destination = destInput ? destInput.value.trim() : '';
-      if(!destination){
-        showToast('請輸入行程目的地', true);
-        return;
+      showToast('行程已刪除');
+    }, true);
+  } else if(action === 'leave-collaboration'){
+    const id = target.getAttribute('data-id');
+    openConfirm('確定要退出這個共用行程嗎？', async ()=>{
+      if(currentUser){
+        await supabaseClient.from('trip_collaborators').delete().eq('trip_id', id).eq('user_id', currentUser.id);
       }
-      const newTrip = {
-        id: uid(),
-        user_id: currentUser ? currentUser.id : null,
-        destination,
-        startDate: startInput ? startInput.value : '',
-        endDate: endInput ? endInput.value : '',
-        categories: emptyCategories(),
-        updated_at: new Date().toISOString(),
-        role: 'owner'
-      };
-      state.trips.push(newTrip);
-      ui.draft = {destination:'', start:'', end:''};
-      state.currentTripId = newTrip.id;
-      state.view = 'trip';
+      state.trips = state.trips.filter(t=>t.id!==id);
+      scheduleSave();
+      state.view = 'list';
+      state.currentTripId = null;
+      render();
+      showToast('已退出協作行程');
+    }, true);
+  } else if(action === 'delete-item'){
+    const catId = target.getAttribute('data-cat');
+    const itemId = target.getAttribute('data-item');
+    const trip = state.trips.find(t=>t.id===state.currentTripId);
+    if(trip && trip.categories[catId]){
+      trip.categories[catId].items = trip.categories[catId].items.filter(i=>i.id!==itemId);
       scheduleSave();
       render();
-      showToast('新行程建立成功！');
-      return;
     }
-    if(action === 'toggle-item'){
-      const catId = btn.getAttribute('data-cat');
-      const itemId = btn.getAttribute('data-item');
-      const trip = state.trips.find(t=>t.id===state.currentTripId);
-      if(!trip || !trip.categories[catId]) return;
-      const item = (trip.categories[catId].items||[]).find(i=>i.id===itemId);
+  } else if(action === 'toggle-item'){
+    const catId = target.getAttribute('data-cat');
+    const itemId = target.getAttribute('data-item');
+    const trip = state.trips.find(t=>t.id===state.currentTripId);
+    if(trip && trip.categories[catId]){
+      const item = trip.categories[catId].items.find(i=>i.id===itemId);
       if(item){
         item.checked = !item.checked;
         scheduleSave();
-        render();
+        
+        // 針對勾選動作改用局部更新或精確渲染，避免整頁重新整理導致畫面捲動至最上方
+        const blockEl = document.querySelector(`.item-block[data-cat="${catId}"][data-item="${itemId}"]`) ||
+                        document.querySelector(`.shopping-card[data-item-id="${itemId}"]`);
+        if (blockEl) {
+          // 若能找到對應DOM，直接更新該區塊以維持捲動位置，並同步更新進度數字
+          render();
+        } else {
+          render();
+        }
       }
-      return;
     }
-    if(action === 'delete-item'){
-      const catId = btn.getAttribute('data-cat');
-      const itemId = btn.getAttribute('data-item');
-      const trip = state.trips.find(t=>t.id===state.currentTripId);
-      if(!trip || !trip.categories[catId]) return;
-      trip.categories[catId].items = (trip.categories[catId].items||[]).filter(i=>i.id!==itemId);
-      if(ui.selectedItemIds) ui.selectedItemIds.delete(itemId);
-      scheduleSave();
-      render();
-      return;
-    }
-    if(action === 'toggle-detail'){
-      const catId = btn.getAttribute('data-cat');
-      const itemId = btn.getAttribute('data-item');
-      const key = catId + '|' + itemId;
-      if(ui.expanded.has(key)) ui.expanded.delete(key);
-      else ui.expanded.add(key);
-      render();
-      return;
-    }
-    if(action === 'toggle-bulk'){
-      const catId = btn.getAttribute('data-cat');
-      if(ui.bulkOpen.has(catId)) ui.bulkOpen.delete(catId);
-      else ui.bulkOpen.add(catId);
-      render();
-      return;
-    }
-    if(action === 'cancel-bulk'){
-      const catId = btn.getAttribute('data-cat');
+  } else if(action === 'toggle-detail'){
+    const catId = target.getAttribute('data-cat');
+    const itemId = target.getAttribute('data-item');
+    const key = catId + '|' + itemId;
+    if(ui.expanded.has(key)) ui.expanded.delete(key);
+    else ui.expanded.add(key);
+    render();
+  } else if(action === 'toggle-bulk'){
+    const catId = target.getAttribute('data-cat');
+    if(ui.bulkOpen.has(catId)){
       ui.bulkOpen.delete(catId);
-      render();
-      return;
-    }
-    if(action === 'confirm-bulk'){
-      const catId = btn.getAttribute('data-cat');
-      const text = ui.bulkDraft[catId] || '';
-      const lines = text.split('\n').map(l=>l.trim()).filter(Boolean);
-      if(lines.length===0){
-        showToast('請先輸入要批次新增的內容', true);
-        return;
-      }
-      const trip = state.trips.find(t=>t.id===state.currentTripId);
-      if(!trip || !trip.categories[catId]) return;
-
-      if(catId === 'expenses'){
-        const inheritedDate = (trip.categories.expenses.items.length > 0 && trip.categories.expenses.items[trip.categories.expenses.items.length - 1].date) ? trip.categories.expenses.items[trip.categories.expenses.items.length - 1].date : (trip.startDate || '');
-        lines.forEach(line=>{
-          const parsed = parseExpenseLine(line, trip, inheritedDate);
-          if(parsed) trip.categories.expenses.items.push(parsed);
-        });
-      } else {
-        lines.forEach(l=>{
-          trip.categories[catId].items.push({ id: uid(), text: l, checked: false, note: '', link: '' });
-        });
-      }
-
-      ui.bulkOpen.delete(catId);
-      delete ui.bulkDraft[catId];
-      scheduleSave();
-      render();
-      showToast(`成功批次新增 ${lines.length} 筆項目`);
-      return;
-    }
-    if(action === 'add-item'){
-      const catId = btn.getAttribute('data-cat');
-      const trip = state.trips.find(t=>t.id===state.currentTripId);
-      if(!trip || !trip.categories[catId]) return;
-      const draft = ui.newItem[catId] || {};
-
-      if(catId === 'expenses'){
-        const text = (draft.text||'').trim();
-        const amount = (draft.amount||'').trim();
-        if(!text && !amount){
-          showToast('請至少輸入花費名稱或金額', true);
-          return;
-        }
-        trip.categories.expenses.items.push({
-          id: uid(),
-          text,
-          checked: false,
-          note: '',
-          link: '',
-          date: draft.date || trip.startDate || '',
-          amount,
-          currency: (draft.currency||'').trim().toUpperCase(),
-          category: (draft.category||'').trim(),
-          payment: (draft.payment||'').trim()
-        });
-        ui.newItem[catId] = {};
-      } else if(catId === 'exchange'){
-        const text = (draft.text||'').trim();
-        const amount = (draft.amount||'').trim();
-        if(!text && !amount){
-          showToast('請輸入換匯項目說明與金額', true);
-          return;
-        }
-        trip.categories.exchange.items.push({
-          id: uid(),
-          text,
-          checked: false,
-          note: '',
-          link: '',
-          amount,
-          currency: (draft.currency||'').trim().toUpperCase()
-        });
-        ui.newItem[catId] = {};
-      } else if(CATS.find(c=>c.id===catId)?.type==='itinerary'){
-        const text = (draft.text||'').trim();
-        if(!text){
-          showToast('請輸入路線規劃內容', true);
-          return;
-        }
-        trip.categories[catId].items.push({
-          id: uid(),
-          day: (draft.day||'').trim(),
-          text,
-          checked: false,
-          note: '',
-          link: ''
-        });
-        ui.newItem[catId] = {};
-      } else if(catId === 'packing' || catId === 'shopping') {
-        const text = (draft.text||'').trim();
-        if(!text){
-          showToast('請輸入項目名稱', true);
-          return;
-        }
-        const subgroupSelect = document.querySelector(`[data-field="new-subgroup"][data-cat="${catId}"]`);
-        const subgroup = subgroupSelect ? subgroupSelect.value : '';
-        trip.categories[catId].items.push({
-          id: uid(),
-          text,
-          checked: false,
-          note: '',
-          link: '',
-          subgroup
-        });
-        ui.newItem[catId] = {};
-      } else {
-        const text = (draft.text||'').trim();
-        if(!text){
-          showToast('請輸入項目名稱', true);
-          return;
-        }
-        trip.categories[catId].items.push({
-          id: uid(),
-          text,
-          checked: false,
-          note: '',
-          link: ''
-        });
-        ui.newItem[catId] = {};
-      }
-
-      scheduleSave();
-      render();
-      return;
-    }
-    if(action === 'add-subgroup'){
-      const catId = btn.getAttribute('data-cat');
-      const trip = state.trips.find(t=>t.id===state.currentTripId);
-      if(!trip || !trip.categories[catId]) return;
-
-      const input = document.querySelector(`[data-field="new-subgroup-input"][data-cat="${catId}"]`);
-      const name = input ? input.value.trim() : '';
-      if(!name){
-        showToast('請輸入分類名稱', true);
-        return;
-      }
-      if(!trip.categories[catId].subgroups) trip.categories[catId].subgroups = [];
-      if(trip.categories[catId].subgroups.includes(name)){
-        showToast('此分類名稱已存在', true);
-        return;
-      }
-      trip.categories[catId].subgroups.push(name);
-      ui.newSubgroup = '';
-      scheduleSave();
-      render();
-      showToast(`已新增分類「${name}」`);
-      return;
-    }
-    if(action === 'toggle-summary'){
-      const panel = btn.getAttribute('data-panel');
-      if(ui.summaryOpen.has(panel)) ui.summaryOpen.delete(panel);
-      else ui.summaryOpen.add(panel);
-      render();
-      return;
-    }
-    if(action === 'toggle-subgroup'){
-      const catId = btn.getAttribute('data-cat');
-      const group = btn.getAttribute('data-group');
-      toggleSubgroup(catId, group);
-      return;
-    }
-  }
-});
-
-/* 監聽點擊購物清單圖片容器的動作 */
-document.addEventListener('click', (e) => {
-  const wrap = e.target.closest('.shopping-img-wrap');
-  if (wrap) {
-    const imgSrc = wrap.getAttribute('data-img-src');
-    const itemId = wrap.getAttribute('data-item-id');
-    if (imgSrc) {
-      openImageModal(imgSrc);
     } else {
-      const fileInput = document.getElementById('img-input-' + itemId);
-      if (fileInput) fileInput.click();
+      ui.bulkOpen.add(catId);
     }
-  }
-});
-
-document.addEventListener('input', (e) => {
-  const target = e.target;
-  const field = target.getAttribute('data-field');
-  if(!field) return;
-
-  if(field === 'new-destination'){
-    ui.draft.destination = target.value;
-  } else if(field === 'new-start'){
-    ui.draft.start = target.value;
-  } else if(field === 'new-end'){
-    ui.draft.end = target.value;
-  } else if(field === 'trip-destination'){
-    const trip = state.trips.find(t=>t.id===state.currentTripId);
-    if(trip){ trip.destination = target.value; scheduleSave(); }
-  } else if(field === 'trip-start'){
-    const trip = state.trips.find(t=>t.id===state.currentTripId);
-    if(trip){ trip.startDate = target.value; scheduleSave(); }
-  } else if(field === 'trip-end'){
-    const trip = state.trips.find(t=>t.id===state.currentTripId);
-    if(trip){ trip.endDate = target.value; scheduleSave(); }
-  } else if(field === 'bulk-text'){
+    render();
+  } else if(action === 'cancel-bulk'){
     const catId = target.getAttribute('data-cat');
-    ui.bulkDraft[catId] = target.value;
-  } else if(field === 'new-subgroup-input'){
-    ui.newSubgroup = target.value;
-  } else if(field.startsWith('new-')){
+    ui.bulkOpen.delete(catId);
+    delete ui.bulkDraft[catId];
+    render();
+  } else if(action === 'confirm-bulk'){
     const catId = target.getAttribute('data-cat');
-    if(!ui.newItem[catId]) ui.newItem[catId] = {};
-    const subField = field.replace('new-', '');
-    ui.newItem[catId][subField] = target.value;
-  } else {
-    const block = target.closest('.item-block');
-    if(block){
-      const catId = block.getAttribute('data-cat');
-      const itemId = block.getAttribute('data-item');
+    const text = ui.bulkDraft[catId] || '';
+    const lines = text.split('\n').map(l=>l.trim()).filter(Boolean);
+    if(lines.length > 0){
       const trip = state.trips.find(t=>t.id===state.currentTripId);
-      if(!trip || !trip.categories[catId]) return;
-      const item = (trip.categories[catId].items||[]).find(i=>i.id===itemId);
-      if(item){
-        item[field] = target.value;
+      if(trip && trip.categories[catId]){
+        if(catId === 'expenses'){
+          const inheritedDate = trip.startDate || '';
+          lines.forEach(line=>{
+            const parsed = parseExpenseLine(line, trip, inheritedDate);
+            if(parsed) trip.categories[catId].items.push(parsed);
+          });
+        } else {
+          lines.forEach(l=>{
+            trip.categories[catId].items.push({ id: uid(), text: l, checked: false, note: '', link: '' });
+          });
+        }
         scheduleSave();
       }
     }
+    ui.bulkOpen.delete(catId);
+    delete ui.bulkDraft[catId];
+    render();
+    showToast('批量匯入成功！');
+  } else if(action === 'add-item'){
+    const catId = target.getAttribute('data-cat');
+    const trip = state.trips.find(t=>t.id===state.currentTripId);
+    if(trip && trip.categories[catId]){
+      const draft = ui.newItem[catId] || {};
+      const text = (draft.text||'').trim();
+      if(!text && catId!=='expenses' && catId!=='exchange'){
+        showToast('請輸入項目名稱', true);
+        return;
+      }
+      const newItem = { id: uid(), text, checked: false, note: '', link: '' };
+      if(draft.subgroup !== undefined) newItem.subgroup = draft.subgroup;
+      if(catId === 'itinerary') newItem.day = (draft.day||'').trim();
+      if(catId === 'exchange' || catId === 'expenses'){
+        newItem.amount = draft.amount!=null && draft.amount!=='' ? parseFloat(draft.amount) : '';
+        newItem.currency = (draft.currency||'').trim().toUpperCase();
+      }
+      if(catId === 'expenses'){
+        newItem.date = draft.date || trip.startDate || '';
+        newItem.category = (draft.category||'').trim();
+        newItem.payment = (draft.payment||'').trim();
+      }
+      trip.categories[catId].items.push(newItem);
+      ui.newItem[catId] = {};
+      scheduleSave();
+      render();
+    }
+  } else if(action === 'add-subgroup'){
+    const catId = target.getAttribute('data-cat');
+    const trip = state.trips.find(t=>t.id===state.currentTripId);
+    if(trip && trip.categories[catId]){
+      const sgName = (ui.newSubgroup || '').trim();
+      if(!sgName){
+        showToast('請輸入分類名稱', true);
+        return;
+      }
+      const catData = trip.categories[catId];
+      if(!catData.subgroups) catData.subgroups = [];
+      if(catData.subgroups.includes(sgName)){
+        showToast('此分類名稱已存在', true);
+        return;
+      }
+      catData.subgroups.push(sgName);
+      ui.newSubgroup = '';
+      scheduleSave();
+      render();
+      showToast(`成功新增分類「${sgName}」`);
+    }
+  } else if(action === 'toggle-subgroup'){
+    const catId = target.getAttribute('data-cat');
+    const groupName = target.getAttribute('data-group');
+    toggleSubgroup(catId, groupName);
+  } else if(action === 'toggle-summary'){
+    const panel = target.getAttribute('data-panel');
+    if(ui.summaryOpen.has(panel)) ui.summaryOpen.delete(panel);
+    else ui.summaryOpen.add(panel);
+    render();
+  } else if(action === 'export-data'){
+    const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(state.trips, null, 2));
+    const dl = document.createElement('a');
+    dl.setAttribute("href", dataStr);
+    dl.setAttribute("download", "travel_planner_backup_" + new Date().toISOString().slice(0,10) + ".json");
+    document.body.appendChild(dl);
+    dl.click();
+    dl.remove();
+    showToast('備份檔案已下載！');
+  } else if(action === 'trigger-import'){
+    document.getElementById('import-input').click();
+  } else if(action === 'modal-ok'){
+    if(ui.confirm && typeof ui.confirm.onOk === 'function'){
+      ui.confirm.onOk();
+    }
+    ui.confirm = null;
+    render();
+  } else if(action === 'modal-cancel'){
+    ui.confirm = null;
+    render();
   }
 });
 
-/* 子分類標題直接修改監聽 */
-document.addEventListener('change', (e) => {
-  const target = e.target;
-  if(target.classList.contains('subgroup-title-input')){
-    const catId = target.getAttribute('data-cat');
-    const index = parseInt(target.getAttribute('data-index'), 10);
-    const newName = target.value.trim();
+document.addEventListener('input', (e)=>{
+  const field = e.target.getAttribute('data-field');
+  const catId = e.target.getAttribute('data-cat');
+
+  if(field === 'new-destination'){
+    ui.draft.destination = e.target.value;
+  } else if(field === 'new-start'){
+    ui.draft.start = e.target.value;
+  } else if(field === 'new-end'){
+    ui.draft.end = e.target.value;
+  } else if(field === 'trip-destination'){
+    const trip = state.trips.find(t=>t.id===state.currentTripId);
+    if(trip){
+      trip.destination = e.target.value;
+      scheduleSave();
+    }
+  } else if(field === 'trip-start'){
+    const trip = state.trips.find(t=>t.id===state.currentTripId);
+    if(trip){
+      trip.startDate = e.target.value;
+      scheduleSave();
+    }
+  } else if(field === 'trip-end'){
+    const trip = state.trips.find(t=>t.id===state.currentTripId);
+    if(trip){
+      trip.endDate = e.target.value;
+      scheduleSave();
+    }
+  } else if(field === 'text' || field === 'amount' || field === 'currency' || field === 'date' || field === 'day' || field === 'category' || field === 'payment' || field === 'link' || field === 'note'){
+    const block = e.target.closest('.item-block') || e.target.closest('.shopping-card');
+    if(block){
+      const itemId = block.getAttribute('data-item') || block.getAttribute('data-item-id');
+      const resolvedCatId = block.getAttribute('data-cat') || (block.closest('.cat-card')?.getAttribute('data-cat'));
+      const trip = state.trips.find(t=>t.id===state.currentTripId);
+      if(trip && trip.categories[resolvedCatId]){
+        const item = trip.categories[resolvedCatId].items.find(i=>i.id===itemId);
+        if(item){
+          item[field] = e.target.value;
+          scheduleSave();
+        }
+      }
+    }
+  } else if(field === 'new-text' || field === 'new-amount' || field === 'new-currency' || field === 'new-date' || field === 'new-day' || field === 'new-category' || field === 'new-payment' || field === 'new-subgroup'){
+    if(!ui.newItem[catId]) ui.newItem[catId] = {};
+    const keyMap = {
+      'new-text': 'text',
+      'new-amount': 'amount',
+      'new-currency': 'currency',
+      'new-date': 'date',
+      'new-day': 'day',
+      'new-category': 'category',
+      'new-payment': 'payment',
+      'new-subgroup': 'subgroup'
+    };
+    ui.newItem[catId][keyMap[field]] = e.target.value;
+  } else if(field === 'new-subgroup-input'){
+    ui.newSubgroup = e.target.value;
+  } else if(field === 'bulk-text'){
+    ui.bulkDraft[catId] = e.target.value;
+  } else if(field && field.startsWith('subgroup-title-')){
+    // 處理子分類標題即時修改
+  }
+});
+
+// 處理分類標題直接編輯
+document.addEventListener('change', (e)=>{
+  if(e.target.classList.contains('subgroup-title-input')){
+    const catId = e.target.getAttribute('data-cat');
+    const index = parseInt(e.target.getAttribute('data-index'), 10);
+    const newName = e.target.value.trim();
     if(!newName) return;
 
     const trip = state.trips.find(t=>t.id===state.currentTripId);
@@ -2455,40 +2374,40 @@ document.addEventListener('change', (e) => {
 
     scheduleSave();
     render();
-    showToast(`分類已重新命名為「${newName}」`);
+    showToast(`分類名稱已更新為「${newName}」`);
   }
 });
 
 /* 檔案匯入處理 */
-document.getElementById('import-input').addEventListener('change', (e) => {
+document.getElementById('import-input').addEventListener('change', (e)=>{
   const file = e.target.files[0];
   if(!file) return;
   const reader = new FileReader();
-  reader.onload = async function(evt){
+  reader.onload = async (evt)=>{
     try{
       const imported = JSON.parse(evt.target.result);
       if(Array.isArray(imported)){
-        state.trips = imported.map(t => ({ ...t, categories: ensureCategories(t.categories) }));
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(state.trips));
-        if(currentUser) {
-          await syncToSupabase();
+        state.trips = imported.map(t=>({ ...t, categories: ensureCategories(t.categories) }));
+        scheduleSave();
+        if(currentUser){
+          await syncToSupabase(state.trips);
         }
         state.view = 'list';
         state.currentTripId = null;
         render();
-        showToast('備份資料成功匯入！');
+        showToast('備份資料匯入成功！');
       } else {
-        showToast('格式錯誤：備份檔案應為行程陣列', true);
+        showToast('格式錯誤：檔案內容必須是行程陣列', true);
       }
     }catch(err){
-      showToast('解析 JSON 檔案失敗，請確認檔案格式', true);
+      showToast('解析 JSON 檔案失敗', true);
     }
   };
   reader.readAsText(file);
   e.target.value = '';
 });
 
-/* 初始化渲染 */
+/* 初始載入渲染 */
 render();
 </script>
 </body>
