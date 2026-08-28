@@ -207,7 +207,6 @@ input,textarea,select{font-family:inherit;}
   background:var(--card);border:1px solid var(--line);border-radius:var(--radius);
   display:flex;flex-direction:column;max-height:none;overflow:visible;
 }
-/* 花費與記帳：清單本身可在卡片內滾動，但新增欄位與下方統計不會被卡片高度裁切 */
 .cat-card[data-cat="expenses"] .cat-body{
   max-height:420px;
   overflow-y:auto;
@@ -224,11 +223,25 @@ input,textarea,select{font-family:inherit;}
 .cat-title{font-family:var(--serif-ui);font-weight:600;font-size:14.5px;flex:1;}
 .cat-frac{font-family:var(--mono);font-size:12px;color:var(--ink-soft);background:var(--paper-deep);
   padding:2px 8px;border-radius:20px;white-space:nowrap;}
+
+/* 第二點修改：右上角按鈕樣式調整，增加與附檔圖片一致的膠囊狀邊框與圖示搭配 */
 .bulk-toggle{
-  background:none;border:1px solid var(--line);color:var(--ink-soft);font-size:12px;border-radius:6px;
-  padding:3px 8px;flex-shrink:0;display:inline-flex;align-items:center;justify-content:center;
+  background:var(--white);
+  border:1px solid var(--line);
+  color:var(--ink-soft);
+  font-size:12px;
+  font-weight:500;
+  border-radius:20px;
+  padding:4px 10px;
+  flex-shrink:0;
+  display:inline-flex;
+  align-items:center;
+  gap:4px;
+  cursor:pointer;
+  transition:all 0.15s ease;
 }
-.bulk-toggle:hover{color:var(--teal);border-color:var(--teal);}
+.bulk-toggle:hover{color:var(--teal);border-color:var(--teal);background:rgba(46,106,98,0.05);}
+
 .cat-body{padding:6px 10px;overflow-y:auto;flex:1;}
 .cat-body::-webkit-scrollbar{width:6px;}
 .cat-body::-webkit-scrollbar-thumb{background:var(--line);border-radius:6px;}
@@ -236,7 +249,12 @@ input,textarea,select{font-family:inherit;}
 .item-block{border-bottom:1px solid rgba(216,197,146,0.5);transition:background-color 0.2s ease;}
 .item-block:last-child{border-bottom:none;}
 .item-block.dragging-item{opacity:0.4;}
-.item-row{display:flex;align-items:center;gap:6px;padding:7px 4px;flex-wrap:wrap;}
+
+/* 第三點修改：將排列調整為兩行顯示 (第一行項目，第二行金額+幣別/備註等) */
+.item-row{display:flex;flex-direction:column;align-items:flex-start;gap:6px;padding:8px 4px;}
+.item-row-top{display:flex;align-items:center;gap:6px;width:100%;}
+.item-row-bottom{display:flex;align-items:center;gap:6px;width:100%;padding-left:26px;}
+
 .item-block.done .item-row{background:rgba(46,106,98,0.07);border-radius:8px;}
 .batch-checkbox{
   width:16px;height:16px;cursor:pointer;accent-color:var(--teal);flex-shrink:0;
@@ -252,8 +270,8 @@ input,textarea,select{font-family:inherit;}
   font-family:var(--mono);font-size:11px;padding:5px 6px;color:var(--teal);text-align:center;
 }
 .item-text{
-  flex:1;min-width:110px;border:none;background:transparent;font-size:13.5px;color:var(--ink);padding:4px 2px;
-  border-bottom:1px solid transparent;
+  flex:1;min-width:0;border:none;background:transparent;font-size:13.5px;color:var(--ink);padding:4px 2px;
+  border-bottom:1px solid transparent;width:100%;
 }
 .item-text:focus{outline:none;border-bottom:1.5px solid var(--brass);}
 .item-amount{
@@ -560,12 +578,12 @@ input,textarea,select{font-family:inherit;}
 
 /* 行前固定支出與換匯卡片微調 */
 .prepaid-source-card .item-row { gap: 4px; }
-.prepaid-source-card .item-text { flex: 1 1 120px; min-width: 80px; }
+.prepaid-source-card .item-text { flex: 1; min-width: 0; }
 .prepaid-source-card .item-amount { width: 75px; flex-shrink: 0; }
 .prepaid-source-card .item-currency { width: 55px; flex-shrink: 0; }
 
 .exchange-card .item-row { gap: 6px; }
-.exchange-card .item-text { flex: 1 1 120px; min-width: 80px; }
+.exchange-card .item-text { flex: 1; min-width: 0; }
 .exchange-card .item-amount { width: 85px; flex-shrink: 0; }
 .exchange-card .item-currency { width: 60px; flex-shrink: 0; }
 .exchange-recon-box {
@@ -656,19 +674,12 @@ input,textarea,select{font-family:inherit;}
   .brand h1{font-size:24px;}
   .expense-meta-row{padding-left:4px;}
 
-  /* 手機版花費清單：保留卡片內捲動，統計區永遠接在新增欄位下面 */
   .cat-card[data-cat="expenses"] .cat-body{max-height:46vh;min-height:120px;}
   .cat-card[data-cat="expenses"] .add-item-row{gap:6px;}
   .cat-card[data-cat="expenses"] .add-item-row .dt{flex:1 1 145px;}
   .cat-card[data-cat="expenses"] .add-item-row input:not(.dt):not(.amt):not(.cur){flex:1 1 150px;}
   .cat-card[data-cat="expenses"] .add-item-row .amt{flex:1 1 95px;min-width:85px;}
   .cat-card[data-cat="expenses"] .add-item-row .cur{flex:0 0 72px;}
-
-  /* 第三點修改：手機版將「金額+幣別」移動至下一行，避免遮擋項目名稱 */
-  .item-row { flex-wrap: wrap; gap: 4px; }
-  .item-text { flex: 1 1 100%; width: 100%; min-width: 0; }
-  .item-amount { width: 75px; flex: 1 1 70px; }
-  .item-currency { width: 55px; flex: 0 0 50px; }
 }
 </style>
 </head>
@@ -1500,6 +1511,7 @@ function toggleBulk(catId){
   render();
 }
 
+/* 第一點修改：強化行程路線規劃自動識別 Day X 或日期 */
 function applyBulk(catId){
   const trip = state.trips.find(t=>t.id===state.currentTripId);
   if(!trip) return;
@@ -1509,6 +1521,8 @@ function applyBulk(catId){
   const lines = raw.split('\n').map(l=>l.trim()).filter(Boolean);
   const catDef = CATS.find(c=>c.id===catId);
   
+  let currentDay = '';
+
   lines.forEach(line=>{
     if(catDef.type === 'expense'){
       const parts = line.split(/\s+/);
@@ -1526,13 +1540,17 @@ function applyBulk(catId){
       addItem(catId, { text, date, category, amount, currency, payment });
     } 
     else if(catDef.type === 'itinerary'){
-      let day='', text=line;
-      const match = line.match(/^(Day\s*\d+|D\d+|第\d+天)\s*[:：\s]?\s*(.*)/i);
-      if(match){
-        day = match[1];
-        text = match[2] || line;
+      const dayHeaderMatch = line.match(/^(Day\s*\d+|D\d+|第\d+天|\d{1,2}\/\d{1,2})/i);
+      
+      if(dayHeaderMatch){
+        currentDay = dayHeaderMatch[0];
+        const remainingText = line.substring(dayHeaderMatch[0].length).replace(/^[:：\s]+/, '').trim();
+        if (remainingText) {
+          addItem(catId, { text: remainingText, day: currentDay });
+        }
+      } else {
+        addItem(catId, { text: line, day: currentDay });
       }
-      addItem(catId, { text, day });
     }
     else {
       addItem(catId, { text: line });
@@ -1726,485 +1744,35 @@ function renderTripList(){
 
   const addCardHtml = `
     <div class="add-card">
-      <div class="add-card-title">+ 新增旅程</div>
-      <input type="text" placeholder="目的地（例：東京、北海道）" value="${escapeAttr(ui.draft.destination)}" oninput="ui.draft.destination=this.value">
+      <div class="add-card-title">＋ 建立新行程</div>
+      <input type="text" placeholder="目的地 (例如：東京 5日遊)" value="${escapeAttr(ui.draft.destination)}" oninput="ui.draft.destination=this.value">
       <div class="add-card-dates">
         <input type="date" value="${escapeAttr(ui.draft.start)}" onchange="ui.draft.start=this.value">
-        <span>-</span>
+        <span>~</span>
         <input type="date" value="${escapeAttr(ui.draft.end)}" onchange="ui.draft.end=this.value">
       </div>
-      <button class="create-btn" onclick="createTrip()">建立行程</button>
+      <button class="create-btn" onclick="createTrip()">新增行程</button>
     </div>
   `;
 
+  /* 第四點修改：把 DESIGNED FOR TRAVELERS 改成 MADE BY LULUPLORE */
   return `
     ${renderAuthBar()}
     <div class="brand">
       <h1>旅行規劃 All in One</h1>
-      <span class="made-by">DESIGNED FOR TRAVELERS</span>
+      <span class="made-by">MADE BY LULUPLORE</span>
     </div>
-    <p class="brand-sub">輕鬆整合機票、住宿、行程路線與預算記帳，打造完美旅程。</p>
+    <div class="brand-sub">輕鬆規劃機票、住宿、行程與記帳，隨時掌握準備進度。</div>
     <div class="toolbar">
-      <button onclick="exportJSON()">📥 匯出 JSON 備份</button>
-      <button onclick="document.getElementById('import-input').click()">📤 匯入 JSON 備份</button>
+      <button onclick="exportJSON()">📥 備份行程 (匯出 JSON)</button>
+      <button onclick="document.getElementById('import-input').click()">📤 還原行程 (匯入 JSON)</button>
     </div>
     <div class="tagline-dash"></div>
-    ${state.trips.length===0 ? '<p class="empty-hint">目前沒有任何行程，立即在下方新增第一個旅程吧！</p>' : ''}
     <div class="grid">
       ${gridHtml}
       ${addCardHtml}
     </div>
   `;
-}
-
-function renderTripDetail(){
-  const trip = state.trips.find(t=>t.id===state.currentTripId);
-  if(!trip) return '';
-
-  const pct = overallProgress(trip);
-  const isOwner = !trip.user_id || (currentUser && trip.user_id === currentUser.id);
-
-  let catsHtml = '';
-  CATS.forEach(cat => {
-    catsHtml += renderCategoryCard(trip, cat);
-  });
-
-  return `
-    ${renderAuthBar()}
-    <div class="trip-header">
-      <div class="th-top-actions">
-        <button class="back-btn" onclick="state.view='list';render();">← 返回行程列表</button>
-        <div class="th-top-right">
-          ${currentUser ? `<button class="btn-auth" onclick="openShareModal()">🔗 共用與協作</button>` : ''}
-          <button class="trip-delete-lg" onclick="deleteTrip('${trip.id}')">刪除此行程</button>
-        </div>
-      </div>
-      <div class="th-row">
-        <input type="text" class="trip-title-input" value="${escapeAttr(trip.destination)}" 
-               onchange="updateTripTitle('${trip.id}', this.value)" placeholder="行程名稱">
-        <div class="th-dates">
-          <input type="date" value="${escapeAttr(trip.startDate||'')}" onchange="updateTripDate('${trip.id}', 'startDate', this.value)">
-          <span>-</span>
-          <input type="date" value="${escapeAttr(trip.endDate||'')}" onchange="updateTripDate('${trip.id}', 'endDate', this.value)">
-        </div>
-        <div class="overall-progress">
-          <div class="overall-pct">${pct}%</div>
-          <div class="overall-label">OVERALL PROGRESS</div>
-        </div>
-      </div>
-    </div>
-    <div class="cats-grid">
-      ${catsHtml}
-    </div>
-  `;
-}
-
-function renderCategoryCard(trip, cat){
-  const catData = trip.categories[cat.id] || { items: [] };
-  const items = catData.items || [];
-  const prog = catProgress(trip, cat);
-  const isBulk = ui.bulkOpen.has(cat.id);
-
-  let itemsHtml = '';
-  if(items.length === 0 && cat.type !== 'expense'){
-    itemsHtml = `<div class="empty-cat">尚無項目</div>`;
-  } else {
-    if (cat.id === 'packing') {
-      const subgroups = catData.subgroups || DEFAULT_PACKING_STRUCTURE.map(s => s.subgroup);
-      
-      subgroups.forEach(subgroup => {
-        const subItems = items.filter(i => i.subgroup === subgroup);
-        const isCollapsed = ui.collapsedSubgroups.has(subgroup);
-
-        itemsHtml += `
-          <div class="subgroup-container">
-            <div class="subgroup-header">
-              <div class="subgroup-header-left" onclick="toggleSubgroupCollapse('${escapeAttr(subgroup)}')">
-                <span>${isCollapsed ? '►' : '▼'}</span>
-                <input type="text" class="subgroup-title-input" value="${escapeAttr(subgroup)}" 
-                       onclick="event.stopPropagation()"
-                       onchange="renameSubgroup('${cat.id}', '${escapeAttr(subgroup)}', this.value)" placeholder="群組名稱">
-                <span style="font-size:11px;color:var(--ink-soft);font-weight:normal;">(${subItems.filter(i=>i.checked).length}/${subItems.length})</span>
-              </div>
-              <button class="subgroup-delete" onclick="event.stopPropagation(); deleteSubgroup('${cat.id}', '${escapeAttr(subgroup)}')">刪除群組</button>
-            </div>
-            ${!isCollapsed ? `
-              <div class="subgroup-items">
-                ${subItems.length === 0 ? '<div class="empty-cat" style="padding:6px;">無項目</div>' : subItems.map(item => renderItemBlock(trip, cat, item)).join('')}
-              </div>
-            ` : ''}
-          </div>
-        `;
-      });
-
-      const unassigned = items.filter(i => !i.subgroup || !subgroups.includes(i.subgroup));
-      if (unassigned.length > 0) {
-        itemsHtml += `
-          <div class="subgroup-container">
-            <div class="subgroup-header">
-              <span>未分類項目</span>
-            </div>
-            <div class="subgroup-items">
-              ${unassigned.map(item => renderItemBlock(trip, cat, item)).join('')}
-            </div>
-          </div>
-        `;
-      }
-    } else if (cat.id === 'shopping') {
-      const subgroups = catData.subgroups || ['Bic Camera', '唐吉訶德', '藥妝店'];
-      
-      subgroups.forEach(subgroup => {
-        const subItems = items.filter(i => i.subgroup === subgroup);
-        const isCollapsed = ui.collapsedSubgroups.has(subgroup);
-
-        itemsHtml += `
-          <div class="subgroup-container">
-            <div class="subgroup-header">
-              <div class="subgroup-header-left" onclick="toggleSubgroupCollapse('${escapeAttr(subgroup)}')">
-                <span>${isCollapsed ? '►' : '▼'}</span>
-                <input type="text" class="subgroup-title-input" value="${escapeAttr(subgroup)}" 
-                       onclick="event.stopPropagation()"
-                       onchange="renameSubgroup('${cat.id}', '${escapeAttr(subgroup)}', this.value)" placeholder="店家/分類名稱">
-                <span style="font-size:11px;color:var(--ink-soft);font-weight:normal;">(${subItems.filter(i=>i.checked).length}/${subItems.length})</span>
-              </div>
-              <button class="subgroup-delete" onclick="event.stopPropagation(); deleteSubgroup('${cat.id}', '${escapeAttr(subgroup)}')">刪除群組</button>
-            </div>
-            ${!isCollapsed ? `
-              <div class="shopping-grid">
-                ${subItems.length === 0 ? '<div class="empty-cat" style="padding:6px;grid-column:1/-1;">無項目</div>' : subItems.map(item => renderShoppingCard(trip, cat, item)).join('')}
-              </div>
-            ` : ''}
-          </div>
-        `;
-      });
-
-      const unassigned = items.filter(i => !i.subgroup || !subgroups.includes(i.subgroup));
-      if (unassigned.length > 0) {
-        itemsHtml += `
-          <div class="subgroup-container">
-            <div class="subgroup-header">
-              <span>未分類項目</span>
-            </div>
-            <div class="shopping-grid">
-              ${unassigned.map(item => renderShoppingCard(trip, cat, item)).join('')}
-            </div>
-          </div>
-        `;
-      }
-    } else {
-      itemsHtml = items.map(item => renderItemBlock(trip, cat, item)).join('');
-    }
-  }
-
-  let addRowHtml = '';
-  const draft = ui.newItem[cat.id] || {};
-  if(cat.type === 'expense'){
-    addRowHtml = `
-      <div class="add-item-row-stack">
-        <div class="expense-meta-row">
-          <input type="date" value="${escapeAttr(draft.date||'')}" onchange="setDraftProp('${cat.id}', 'date', this.value)">
-          <select onchange="setDraftProp('${cat.id}', 'category', this.value)">
-            ${EXPENSE_CATS.map(c=>`<option value="${c}" ${draft.category===c?'selected':''}>${c}</option>`).join('')}
-          </select>
-          <select onchange="setDraftProp('${cat.id}', 'payment', this.value)">
-            ${paymentSuggestions().map(p=>`<option value="${escapeAttr(p)}" ${draft.payment===p?'selected':''}>${escapeHtml(p)}</option>`).join('')}
-          </select>
-        </div>
-        <div class="add-item-row">
-          <input type="text" placeholder="品項名稱" value="${escapeAttr(draft.text||'')}" oninput="setDraftProp('${cat.id}', 'text', this.value)" onkeydown="if(event.key==='Enter') addItem('${cat.id}')">
-          <input type="number" class="amt" placeholder="金額" value="${escapeAttr(draft.amount||'')}" oninput="setDraftProp('${cat.id}', 'amount', this.value)" onkeydown="if(event.key==='Enter') addItem('${cat.id}')">
-          <input type="text" class="cur" placeholder="幣別" value="${escapeAttr(draft.currency||'JPY')}" oninput="setDraftProp('${cat.id}', 'currency', this.value)" onkeydown="if(event.key==='Enter') addItem('${cat.id}')">
-          <button onclick="addItem('${cat.id}')">+</button>
-        </div>
-      </div>
-    `;
-  } else if(cat.type === 'itinerary') {
-    addRowHtml = `
-      <div class="add-item-row">
-        <input type="text" style="flex:0 0 65px;min-width:0;font-family:var(--mono);" placeholder="Day 1" value="${escapeAttr(draft.day||'')}" oninput="setDraftProp('${cat.id}', 'day', this.value)" onkeydown="if(event.key==='Enter') addItem('${cat.id}')">
-        <input type="text" placeholder="新增行程..." value="${escapeAttr(draft.text||'')}" oninput="setDraftProp('${cat.id}', 'text', this.value)" onkeydown="if(event.key==='Enter') addItem('${cat.id}')">
-        <button onclick="addItem('${cat.id}')">+</button>
-      </div>
-    `;
-  } else if(cat.id === 'packing' || cat.id === 'shopping') {
-    const subgroups = catData.subgroups || (cat.id === 'packing' ? DEFAULT_PACKING_STRUCTURE.map(s => s.subgroup) : ['Bic Camera', '唐吉訶德', '藥妝店']);
-    
-    addRowHtml = `
-      <div class="add-group-row">
-        <input type="text" id="new-group-input-${cat.id}" placeholder="新增分類群組名稱..." onkeydown="if(event.key==='Enter') addSubgroup('${cat.id}')">
-        <button onclick="addSubgroup('${cat.id}')">新增群組</button>
-      </div>
-      <div class="add-item-row">
-        <select onchange="setDraftProp('${cat.id}', 'subgroup', this.value)" style="flex:0 0 100px;">
-          ${subgroups.map(sg => `<option value="${escapeAttr(sg)}" ${(draft.subgroup || subgroups[0]) === sg ? 'selected' : ''}>${escapeHtml(sg)}</option>`).join('')}
-        </select>
-        <input type="text" placeholder="${cat.hint}" value="${escapeAttr(draft.text||'')}" oninput="setDraftProp('${cat.id}', 'text', this.value)" onkeydown="if(event.key==='Enter') addItem('${cat.id}')">
-        <button onclick="addItem('${cat.id}')">+</button>
-      </div>
-    `;
-  } else {
-    addRowHtml = `
-      <div class="add-item-row">
-        <input type="text" placeholder="${cat.hint}" value="${escapeAttr(draft.text||'')}" oninput="setDraftProp('${cat.id}', 'text', this.value)" onkeydown="if(event.key==='Enter') addItem('${cat.id}')">
-        <input type="number" class="amt" placeholder="金額" value="${escapeAttr(draft.amount||'')}" oninput="setDraftProp('${cat.id}', 'amount', this.value)">
-        <input type="text" class="cur" placeholder="幣別" value="${escapeAttr(draft.currency||'')}" oninput="setDraftProp('${cat.id}', 'currency', this.value)">
-        <button onclick="addItem('${cat.id}')">+</button>
-      </div>
-    `;
-  }
-
-  let extraFooter = '';
-  if(cat.type === 'expense'){
-    const totals = expenseTotalsByCurrency(trip);
-    extraFooter = `
-      <div class="expense-total">
-        <div class="expense-total-label">總花費統計</div>
-        ${totals.length===0 ? '<div style="font-size:12px;color:var(--ink-soft);">尚無花費紀錄</div>' : 
-          totals.map(([cur, amt])=>`<div class="summary-row"><span>${escapeHtml(cur)}</span><span>${amt.toLocaleString()}</span></div>`).join('')}
-      </div>
-    `;
-  } else if (cat.type === 'exchange') {
-    const reconList = exchangeReconByCurrency(trip);
-    if(reconList.length > 0){
-      extraFooter = `
-        <div class="exchange-recon-box">
-          <div class="exchange-recon-title">現金對帳試算</div>
-          ${reconList.map(item=>`
-            <div class="summary-row">
-              <span>${escapeHtml(item.currency)} 剩餘現金:</span>
-              <span style="font-weight:bold; color: ${item.remain < 0 ? 'var(--stamp-ink)' : 'var(--teal)'};">
-                ${item.remain.toLocaleString()}
-              </span>
-            </div>
-            <div style="font-size:10px; color:var(--ink-soft); margin-bottom:4px;">
-              (已提領 ${item.exchanged.toLocaleString()} - 現金已花費 ${item.spent.toLocaleString()})
-            </div>
-          `).join('')}
-        </div>
-      `;
-    }
-  }
-
-  /* 第二點修改：將按鈕改成與圖片相同的選單圖示 */
-  return `
-    <div class="cat-card ${isPrepaidCategoryId(cat.id) ? 'prepaid-source-card' : ''}" data-cat="${cat.id}">
-      <div class="cat-head">
-        <span class="cat-icon">${cat.icon}</span>
-        <span class="cat-title">${cat.label}</span>
-        ${prog ? `<span class="cat-frac">${prog.done}/${prog.total}</span>` : ''}
-        <button class="bulk-toggle" onclick="toggleBulk('${cat.id}')" title="快速貼上多筆資料">
-          <span style="font-size:13px;letter-spacing:-2px;font-weight:bold;">≡≡≡</span>
-        </button>
-      </div>
-      
-      ${isBulk ? `
-        <div class="bulk-panel">
-          <textarea placeholder="一行一筆資料，直接貼上文字..." oninput="ui.bulkDraft['${cat.id}']=this.value">${escapeHtml(ui.bulkDraft[cat.id]||'')}</textarea>
-          <div class="bulk-panel-btns">
-            <button onclick="applyBulk('${cat.id}')">確定加入</button>
-            <span class="bulk-hint">${cat.hint}</span>
-          </div>
-        </div>
-      ` : ''}
-
-      <div class="cat-body">
-        ${itemsHtml}
-      </div>
-      ${addRowHtml}
-      ${extraFooter}
-    </div>
-  `;
-}
-
-function renderItemBlock(trip, cat, item){
-  const isExpanded = ui.expanded.has(item.id);
-  const isDone = item.checked;
-  const isPrepaid = item.isPrepaid;
-
-  if (isPrepaid) {
-    return `
-      <div class="item-block ${isDone ? 'done' : ''} prepaid-expense">
-        <div class="item-row">
-          <span class="stamp-check ${isDone ? 'on' : ''}">✓</span>
-          <span class="prepaid-badge">預訂支出</span>
-          <input type="text" class="item-text" value="${escapeAttr(item.text)}" readonly>
-          <input type="number" class="item-amount" value="${escapeAttr(item.amount)}" readonly>
-          <input type="text" class="item-currency" value="${escapeAttr(item.currency)}" readonly>
-        </div>
-      </div>
-    `;
-  }
-
-  return `
-    <div class="item-block ${isDone ? 'done' : ''}" data-id="${item.id}">
-      <div class="item-row">
-        <span class="stamp-check ${isDone ? 'on' : ''}" onclick="toggleItem('${cat.id}', '${item.id}')">✓</span>
-        ${cat.type==='itinerary' ? `
-          <input type="text" class="item-day" value="${escapeAttr(item.day||'')}" onchange="updateItem('${cat.id}', '${item.id}', 'day', this.value)" placeholder="Day">
-        ` : ''}
-        <input type="text" class="item-text" value="${escapeAttr(item.text)}" onchange="updateItem('${cat.id}', '${item.id}', 'text', this.value)">
-        ${(cat.type==='expense' || cat.type==='checklist' || cat.type==='exchange') ? `
-          <input type="number" class="item-amount" value="${escapeAttr(item.amount||'')}" onchange="updateItem('${cat.id}', '${item.id}', 'amount', this.value)" placeholder="金額">
-          <input type="text" class="item-currency" value="${escapeAttr(item.currency||'')}" onchange="updateItem('${cat.id}', '${item.id}', 'currency', this.value)" placeholder="幣別">
-        ` : ''}
-        ${cat.type==='expense' ? `
-          <input type="date" class="item-date" value="${escapeAttr(item.date||'')}" onchange="updateItem('${cat.id}', '${item.id}', 'date', this.value)">
-        ` : ''}
-        <button class="item-more" onclick="toggleExpand('${item.id}')" title="詳細備忘與連結">✎</button>
-        <button class="item-delete" onclick="deleteItem('${cat.id}', '${item.id}')" title="刪除">✕</button>
-      </div>
-      ${isExpanded ? `
-        <div class="item-detail">
-          <input type="text" class="item-link" value="${escapeAttr(item.link||'')}" onchange="updateItem('${cat.id}', '${item.id}', 'link', this.value)" placeholder="相關連結 URL (如地圖、訂單)">
-          <textarea class="item-note" onchange="updateItem('${cat.id}', '${item.id}', 'note', this.value)" placeholder="備註說明...">${escapeHtml(item.note||'')}</textarea>
-        </div>
-      ` : ''}
-    </div>
-  `;
-}
-
-function renderShoppingCard(trip, cat, item) {
-  const isDone = item.checked;
-  return `
-    <div class="shopping-card ${isDone ? 'done' : ''}">
-      <div class="shopping-img-wrap" onclick="triggerImageUpload('${item.id}')">
-        ${item.image ? `<img src="${item.image}" alt="商品照片" onclick="event.stopPropagation(); openImageModal('${item.image}')">` : `<div class="shopping-img-placeholder">+ 新增照片</div>`}
-      </div>
-      <input type="file" id="img-input-${item.id}" class="img-upload-input" accept="image/*" onchange="handleImageUpload('${cat.id}', '${item.id}', event)">
-      <div style="display:flex;align-items:center;gap:4px;">
-        <span class="stamp-check ${isDone ? 'on' : ''}" style="width:16px;height:16px;font-size:9px;" onclick="toggleItem('${cat.id}', '${item.id}')">✓</span>
-        <input type="text" class="item-text" style="font-size:12px;padding:2px 0;" value="${escapeAttr(item.text)}" onchange="updateItem('${cat.id}', '${item.id}', 'text', this.value)" placeholder="商品名稱">
-      </div>
-      <div style="display:flex;gap:4px;">
-        <input type="number" class="item-amount" style="width:100%;font-size:11px;padding:3px 4px;" value="${escapeAttr(item.amount||'')}" onchange="updateItem('${cat.id}', '${item.id}', 'amount', this.value)" placeholder="預估金額">
-      </div>
-      <button class="item-delete" style="position:absolute;top:4px;right:4px;background:rgba(255,255,255,0.8);border-radius:50%;width:20px;height:20px;padding:0;display:flex;align-items:center;justify-content:center;" onclick="deleteItem('${cat.id}', '${item.id}')">✕</button>
-    </div>
-  `;
-}
-
-/* ===================== 行李與購物分組操作 ===================== */
-function toggleSubgroupCollapse(subgroup){
-  if(ui.collapsedSubgroups.has(subgroup)){
-    ui.collapsedSubgroups.delete(subgroup);
-  } else {
-    ui.collapsedSubgroups.add(subgroup);
-  }
-  render();
-}
-
-function addSubgroup(catId){
-  const trip = state.trips.find(t=>t.id===state.currentTripId);
-  if(!trip) return;
-  const inputEl = document.getElementById(`new-group-input-${catId}`);
-  if(!inputEl) return;
-  const newGroup = inputEl.value.trim();
-  if(!newGroup) {
-    showToast('請輸入群組名稱', true);
-    return;
-  }
-
-  if(!trip.categories[catId]) trip.categories[catId] = { subgroups: [], items: [] };
-  if(!trip.categories[catId].subgroups) trip.categories[catId].subgroups = [];
-
-  if(trip.categories[catId].subgroups.includes(newGroup)){
-    showToast('該群組名稱已存在', true);
-    return;
-  }
-
-  trip.categories[catId].subgroups.push(newGroup);
-  inputEl.value = '';
-  scheduleSave();
-  render();
-  showToast(`已新增群組「${newGroup}」`);
-}
-
-function renameSubgroup(catId, oldName, newName){
-  newName = newName.trim();
-  if(!newName || oldName === newName) return;
-  const trip = state.trips.find(t=>t.id===state.currentTripId);
-  if(!trip) return;
-
-  const catData = trip.categories[catId];
-  if(catData && catData.subgroups){
-    const idx = catData.subgroups.indexOf(oldName);
-    if(idx !== -1) catData.subgroups[idx] = newName;
-  }
-  if(catData && catData.items){
-    catData.items.forEach(i => {
-      if(i.subgroup === oldName) i.subgroup = newName;
-    });
-  }
-  scheduleSave();
-  render();
-}
-
-function deleteSubgroup(catId, subgroupName){
-  const trip = state.trips.find(t=>t.id===state.currentTripId);
-  if(!trip) return;
-
-  showModal(`確定要刪除「${subgroupName}」群組及其底下所有項目嗎？`, '刪除群組', () => {
-    const catData = trip.categories[catId];
-    if(catData && catData.subgroups){
-      catData.subgroups = catData.subgroups.filter(sg => sg !== subgroupName);
-    }
-    if(catData && catData.items){
-      catData.items = catData.items.filter(i => i.subgroup !== subgroupName);
-    }
-    scheduleSave();
-    render();
-    showToast(`已刪除群組「${subgroupName}」`);
-  });
-}
-
-function triggerImageUpload(itemId){
-  const el = document.getElementById(`img-input-${itemId}`);
-  if(el) el.click();
-}
-
-function handleImageUpload(catId, itemId, event){
-  const file = event.target.files[0];
-  if(!file) return;
-
-  const reader = new FileReader();
-  reader.onload = function(e){
-    const base64Img = e.target.result;
-    updateItem(catId, itemId, 'image', base64Img);
-    render();
-  };
-  reader.readAsDataURL(file);
-}
-
-function openImageModal(imgSrc){
-  ui.modalImageSrc = imgSrc;
-  render();
-}
-
-function closeImageModal(){
-  ui.modalImageSrc = null;
-  render();
-}
-
-/* ===================== 輔助函數與更新邏輯 ===================== */
-function setDraftProp(catId, prop, val){
-  if(!ui.newItem[catId]) ui.newItem[catId] = {};
-  ui.newItem[catId][prop] = val;
-}
-
-function updateTripTitle(tripId, title){
-  const trip = state.trips.find(t=>t.id===tripId);
-  if(trip){
-    trip.destination = title.trim() || '未命名行程';
-    scheduleSave();
-  }
-}
-
-function updateTripDate(tripId, key, val){
-  const trip = state.trips.find(t=>t.id===tripId);
-  if(trip){
-    trip[key] = val;
-    scheduleSave();
-  }
 }
 
 function openTrip(id){
@@ -2213,94 +1781,263 @@ function openTrip(id){
   render();
 }
 
-function renderModals(){
-  let html = '';
+function renderItemRow(cat, item, idx){
+  const isDone = item.checked;
+  const isExp = ui.expanded.has(item.id);
 
-  if(ui.confirm){
-    html += `
-      <div class="modal-overlay">
-        <div class="modal-box">
-          <p class="modal-msg">${escapeHtml(ui.confirm.msg)}</p>
-          <div class="modal-btns">
-            <button class="modal-btn" onclick="closeModal()">${escapeHtml(ui.confirm.cancelText)}</button>
-            <button class="modal-btn danger" onclick="
-              const cb = ui.confirm.onConfirm;
-              closeModal();
-              if(cb) cb();
-            ">${escapeHtml(ui.confirm.confirmText)}</button>
-          </div>
-        </div>
+  /* 第三點修改：兩行化呈現（第一行項目，第二行金額+幣別/日期等細節） */
+  let topControls = `
+    <button class="stamp-check ${isDone?'on':''}" onclick="toggleItem('${cat.id}', '${item.id}')">
+      ${isDone?'✓':''}
+    </button>
+    ${cat.type==='itinerary'?`<input type="text" class="item-day" value="${escapeAttr(item.day||'')}" placeholder="Day 1" onchange="updateItem('${cat.id}','${item.id}','day',this.value)">`:''}
+    <input type="text" class="item-text" value="${escapeAttr(item.text)}" placeholder="項目名稱..." onchange="updateItem('${cat.id}','${item.id}','text',this.value)">
+    <button class="item-more" onclick="toggleExpand('${item.id}')" title="詳細備註">${isExp?'▲':'▼'}</button>
+    <button class="item-delete" onclick="deleteItem('${cat.id}', '${item.id}')" title="刪除">✕</button>
+  `;
+
+  let hasBottomControls = (item.amount !== undefined && item.amount !== '') || item.currency || item.date;
+  let bottomControls = '';
+
+  if (hasBottomControls || cat.type==='expense' || isPrepaidCategoryId(cat.id) || cat.id==='exchange') {
+    bottomControls = `
+      <div class="item-row-bottom">
+        ${item.amount !== undefined ? `<input type="number" class="item-amount" value="${escapeAttr(item.amount||'')}" placeholder="金額" onchange="updateItem('${cat.id}','${item.id}','amount',this.value)">` : ''}
+        ${item.currency !== undefined ? `<input type="text" class="item-currency" value="${escapeAttr(item.currency||'')}" placeholder="幣別" onchange="updateItem('${cat.id}','${item.id}','currency',this.value)">` : ''}
+        ${item.date !== undefined && cat.type==='expense' ? `<input type="date" class="item-date" value="${escapeAttr(item.date||'')}" onchange="updateItem('${cat.id}','${item.id}','date',this.value)">` : ''}
       </div>
     `;
   }
 
-  if(ui.modalImageSrc){
-    html += `
-      <div class="image-modal-overlay" onclick="closeImageModal()">
-        <div class="image-modal-content" onclick="event.stopPropagation()">
-          <img src="${ui.modalImageSrc}" alt="檢視大圖">
-          <button class="image-modal-close" onclick="closeImageModal()">✕</button>
-        </div>
+  const detailHtml = isExp ? `
+    <div class="item-detail">
+      <input type="text" class="item-link" value="${escapeAttr(item.link||'')}" placeholder="網址/連結 (http...)" onchange="updateItem('${cat.id}','${item.id}','link',this.value)">
+      <textarea class="item-note" placeholder="詳細備註/備忘錄..." onchange="updateItem('${cat.id}','${item.id}','note',this.value)">${escapeHtml(item.note||'')}</textarea>
+    </div>
+  ` : '';
+
+  return `
+    <div class="item-block ${isDone?'done':''}" 
+         draggable="true" 
+         ondragstart="handleItemDragStart(event, '${cat.id}', ${idx})" 
+         ondragover="handleItemDragOver(event)" 
+         ondrop="handleItemDrop(event, '${cat.id}', ${idx})" 
+         ondragend="handleItemDragEnd(event)">
+      <div class="item-row">
+        <div class="item-row-top">${topControls}</div>
+        ${bottomControls}
       </div>
-    `;
-  }
-
-  if(ui.shareModal){
-    const trip = state.trips.find(t=>t.id===state.currentTripId);
-    const shareUrl = `${window.location.origin}${window.location.pathname}?trip_id=${trip ? trip.id : ''}`;
-
-    html += `
-      <div class="modal-overlay">
-        <div class="modal-box" style="max-width:440px;">
-          <h3 style="margin-top:0;font-size:16px;">🔗 行程共用與雲端協作</h3>
-          <p style="font-size:12.5px;color:var(--ink-soft);line-height:1.5;">複製下方連結傳送給好友，對方點開後即可一同編輯與檢視行程：</p>
-          <input type="text" readonly value="${shareUrl}" style="width:100%;padding:8px;font-size:12px;margin-bottom:12px;border:1px solid var(--line);border-radius:6px;background:var(--paper-deep);">
-          <div class="modal-btns">
-            <button class="modal-btn primary" onclick="
-              navigator.clipboard.writeText('${shareUrl}');
-              showToast('已複製共用連結！');
-              ui.shareModal = false;
-              render();
-            ">複製連結</button>
-            <button class="modal-btn" onclick="ui.shareModal=false;render();">關閉</button>
-          </div>
-        </div>
-      </div>
-    `;
-  }
-
-  if(ui.toast){
-    html += `
-      <div class="toast ${ui.toast.isErr ? 'error' : ''}">${escapeHtml(ui.toast.msg)}</div>
-    `;
-  }
-
-  return html;
+      ${detailHtml}
+    </div>
+  `;
 }
 
-function openShareModal(){
-  ui.shareModal = true;
-  render();
+function renderCatCard(trip, cat){
+  const catData = trip.categories[cat.id] || { items: [] };
+  const items = catData.items || [];
+
+  const prog = catProgress(trip, cat);
+  const fracStr = prog ? `${prog.done}/${prog.total}` : '';
+
+  const isBulkOpen = ui.bulkOpen.has(cat.id);
+
+  /* 第二點修改：按鈕圖示與樣式對齊附檔圖片 */
+  let cardHeadBtn = `<button class="bulk-toggle" onclick="toggleBulk('${cat.id}')">📋 貼上文案</button>`;
+
+  let bulkPanelHtml = isBulkOpen ? `
+    <div class="bulk-panel">
+      <textarea placeholder="${cat.hint}" oninput="ui.bulkDraft['${cat.id}']=this.value">${escapeHtml(ui.bulkDraft[cat.id]||'')}</textarea>
+      <div class="bulk-panel-btns">
+        <button onclick="applyBulk('${cat.id}')">匯入項目</button>
+        <span class="bulk-hint">每行會自動新增為一筆資料</span>
+      </div>
+    </div>
+  ` : '';
+
+  let bodyHtml = '';
+
+  if(cat.type === 'expense') {
+    const manualItems = getManualExpenseItems(trip);
+    const prepaidItems = getPrepaidExpenseItems(trip);
+
+    let manualHtml = manualItems.map((item, idx) => {
+      const isExp = ui.expanded.has(item.id);
+      return `
+        <div class="item-block">
+          <div class="item-row">
+            <div class="item-row-top">
+              <input type="text" class="item-text" value="${escapeAttr(item.text)}" placeholder="花費項目..." onchange="updateItem('expenses','${item.id}','text',this.value)">
+              <button class="item-more" onclick="toggleExpand('${item.id}')" title="備註">${isExp?'▲':'▼'}</button>
+              <button class="item-delete" onclick="deleteItem('expenses', '${item.id}')" title="刪除">✕</button>
+            </div>
+            <div class="item-row-bottom">
+              <input type="number" class="item-amount" value="${escapeAttr(item.amount||'')}" placeholder="金額" onchange="updateItem('expenses','${item.id}','amount',this.value)">
+              <input type="text" class="item-currency" value="${escapeAttr(item.currency||'')}" placeholder="幣別" onchange="updateItem('expenses','${item.id}','currency',this.value)">
+              <input type="date" class="item-date" value="${escapeAttr(item.date||'')}" onchange="updateItem('expenses','${item.id}','date',this.value)">
+            </div>
+          </div>
+          ${isExp ? `
+            <div class="item-detail">
+              <textarea class="item-note" placeholder="備註..." onchange="updateItem('expenses','${item.id}','note',this.value)">${escapeHtml(item.note||'')}</textarea>
+            </div>
+          ` : ''}
+        </div>
+      `;
+    }).join('');
+
+    let prepaidHtml = prepaidItems.map(item => `
+      <div class="item-block prepaid-expense">
+        <div class="item-row">
+          <div class="item-row-top">
+            <span class="prepaid-badge">固定支出</span>
+            <input type="text" class="item-text" value="${escapeAttr(item.text)}" readonly>
+          </div>
+          <div class="item-row-bottom">
+            <input type="number" class="item-amount" value="${escapeAttr(item.amount||'')}" readonly>
+            <input type="text" class="item-currency" value="${escapeAttr(item.currency||'')}" readonly>
+            <input type="date" class="item-date" value="${escapeAttr(item.date||'')}" readonly>
+          </div>
+        </div>
+      </div>
+    `).join('');
+
+    bodyHtml = manualHtml + prepaidHtml;
+    if(!manualItems.length && !prepaidItems.length){
+      bodyHtml = `<div class="empty-cat">尚無記帳資料，可直接新增或從其他類別填寫金額自動匯入</div>`;
+    }
+  } else {
+    bodyHtml = items.map((item, idx) => renderItemRow(cat, item, idx)).join('');
+    if(!items.length) {
+      bodyHtml = `<div class="empty-cat">尚無項目，請點擊上方按鈕批次匯入或於下方新增</div>`;
+    }
+  }
+
+  let addRowHtml = '';
+  if(cat.type === 'expense') {
+    let draft = ui.newItem['expenses'] || {};
+    addRowHtml = `
+      <div class="add-item-row-stack">
+        <div class="add-item-row">
+          <input type="text" placeholder="新增花費項目..." value="${escapeAttr(draft.text||'')}" oninput="if(!ui.newItem['expenses'])ui.newItem['expenses']={};ui.newItem['expenses'].text=this.value">
+          <input type="number" class="amt" placeholder="金額" value="${escapeAttr(draft.amount||'')}" oninput="if(!ui.newItem['expenses'])ui.newItem['expenses']={};ui.newItem['expenses'].amount=this.value">
+          <input type="text" class="cur" placeholder="JPY" value="${escapeAttr(draft.currency||'JPY')}" oninput="if(!ui.newItem['expenses'])ui.newItem['expenses']={};ui.newItem['expenses'].currency=this.value">
+          <input type="date" class="dt" value="${escapeAttr(draft.date||'')}" onchange="if(!ui.newItem['expenses'])ui.newItem['expenses']={};ui.newItem['expenses'].date=this.value">
+          <button onclick="addItem('expenses')">＋</button>
+        </div>
+      </div>
+    `;
+  } else {
+    let draft = ui.newItem[cat.id] || {};
+    addRowHtml = `
+      <div class="add-item-row">
+        ${cat.type==='itinerary'?`<input type="text" style="flex:0 0 70px" placeholder="Day 1" value="${escapeAttr(draft.day||'')}" oninput="if(!ui.newItem['${cat.id}'])ui.newItem['${cat.id}']={};ui.newItem['${cat.id}'].day=this.value">`:''}
+        <input type="text" placeholder="新增 ${cat.label} 項目..." value="${escapeAttr(draft.text||'')}" oninput="if(!ui.newItem['${cat.id}'])ui.newItem['${cat.id}']={};ui.newItem['${cat.id}'].text=this.value" onkeydown="if(event.key==='Enter')addItem('${cat.id}')">
+        ${isPrepaidCategoryId(cat.id) || cat.id==='exchange' ? `
+          <input type="number" class="amt" placeholder="金額" value="${escapeAttr(draft.amount||'')}" oninput="if(!ui.newItem['${cat.id}'])ui.newItem['${cat.id}']={};ui.newItem['${cat.id}'].amount=this.value">
+          <input type="text" class="cur" placeholder="JPY" value="${escapeAttr(draft.currency||'JPY')}" oninput="if(!ui.newItem['${cat.id}'])ui.newItem['${cat.id}']={};ui.newItem['${cat.id}'].currency=this.value">
+        ` : ''}
+        <button onclick="addItem('${cat.id}')">＋</button>
+      </div>
+    `;
+  }
+
+  let totalsHtml = '';
+  if(cat.type === 'expense') {
+    const totals = expenseTotalsByCurrency(trip);
+    totalsHtml = `
+      <div class="expense-total">
+        <div class="expense-total-label">💰 總支出累計：</div>
+        ${totals.length ? totals.map(([cur, amt])=>`<div class="summary-row"><span>${cur}</span><span>$${amt.toLocaleString()}</span></div>`).join('') : '<div style="font-size:11.5px;color:var(--ink-soft)">尚無數據</div>'}
+      </div>
+    `;
+  }
+
+  return `
+    <div class="cat-card" data-cat="${cat.id}">
+      <div class="cat-head">
+        <span class="cat-icon">${cat.icon}</span>
+        <span class="cat-title">${cat.label}</span>
+        ${fracStr ? `<span class="cat-frac">${fracStr}</span>` : ''}
+        ${cardHeadBtn}
+      </div>
+      <div class="cat-body">
+        ${bulkPanelHtml}
+        ${bodyHtml}
+      </div>
+      ${addRowHtml}
+      ${totalsHtml}
+    </div>
+  `;
+}
+
+function renderTripDetail(){
+  const trip = state.trips.find(t=>t.id===state.currentTripId);
+  if(!trip) return `<div class="empty-hint">找不到該行程。</div>`;
+
+  const pct = overallProgress(trip);
+
+  return `
+    ${renderAuthBar()}
+    <div class="trip-header">
+      <div class="th-top-actions">
+        <button class="back-btn" onclick="state.view='list';render();">← 返回行程列表</button>
+        <div class="th-top-right">
+          <button class="trip-delete-lg" onclick="deleteTrip('${trip.id}')">刪除此行程</button>
+        </div>
+      </div>
+      <div class="th-row">
+        <input type="text" class="trip-title-input" value="${escapeAttr(trip.destination)}" onchange="trip.destination=this.value;scheduleSave();">
+        <div class="th-dates">
+          <input type="date" value="${escapeAttr(trip.startDate||'')}" onchange="trip.startDate=this.value;scheduleSave();">
+          <span>~</span>
+          <input type="date" value="${escapeAttr(trip.endDate||'')}" onchange="trip.endDate=this.value;scheduleSave();">
+        </div>
+        <div class="overall-progress">
+          <span class="overall-pct">${pct}%</span>
+          <span class="overall-label">READY</span>
+        </div>
+      </div>
+    </div>
+    <div class="cats-grid">
+      ${CATS.map(c=>renderCatCard(trip, c)).join('')}
+    </div>
+  `;
+}
+
+function renderModal(){
+  if(!ui.confirm) return '';
+  return `
+    <div class="modal-overlay">
+      <div class="modal-box">
+        <div class="modal-msg">${escapeHtml(ui.confirm.msg)}</div>
+        <div class="modal-btns">
+          <button class="modal-btn" onclick="closeModal()">${escapeHtml(ui.confirm.cancelText)}</button>
+          <button class="modal-btn primary danger" onclick="if(ui.confirm.onConfirm) ui.confirm.onConfirm(); closeModal();">${escapeHtml(ui.confirm.confirmText)}</button>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function renderToast(){
+  if(!ui.toast) return '';
+  return `<div class="toast ${ui.toast.isErr?'error':''}">${escapeHtml(ui.toast.msg)}</div>`;
 }
 
 function render(){
   const app = document.getElementById('app');
-  if(!app) return;
-
+  let content = '';
   if(state.view === 'list'){
-    app.innerHTML = renderTripList();
+    content = renderTripList();
   } else if(state.view === 'trip'){
-    app.innerHTML = renderTripDetail();
+    content = renderTripDetail();
   }
-
-  app.innerHTML += renderModals();
+  app.innerHTML = content + renderModal() + renderToast();
 }
 
-/* 程式進入點 */
-document.addEventListener('DOMContentLoaded', () => {
-  document.getElementById('import-input').addEventListener('change', importJSON);
-  render();
-});
+/* 初始事件與啟動 */
+document.getElementById('import-input').addEventListener('change', importJSON);
+render();
 </script>
 </body>
 </html>
