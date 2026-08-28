@@ -237,6 +237,7 @@ input,textarea,select{font-family:inherit;}
 .item-block:last-child{border-bottom:none;}
 .item-block.dragging-item{opacity:0.4;}
 .item-row{display:flex;align-items:center;gap:6px;padding:7px 4px;flex-wrap:wrap;}
+.item-meta-row{display:flex;gap:6px;padding:0 4px 8px 30px;flex-wrap:wrap;}
 .item-block.done .item-row{background:rgba(46,106,98,0.07);border-radius:8px;}
 .batch-checkbox{
   width:16px;height:16px;cursor:pointer;accent-color:var(--teal);flex-shrink:0;
@@ -377,6 +378,11 @@ input,textarea,select{font-family:inherit;}
   border-color: var(--teal, #2e6a62);
   opacity: 0.75;
 }
+.shopping-note{
+  width:100%;box-sizing:border-box;border:1px solid var(--line);background:var(--white);border-radius:6px;
+  font-size:11px;padding:3px 6px;color:var(--ink-soft);
+}
+.shopping-note::placeholder{color:#B5AC8E;}
 .shopping-img-wrap {
   width: 100%;
   height: 100px;
@@ -534,6 +540,7 @@ input,textarea,select{font-family:inherit;}
 .summary-group{border-radius:9px;padding:8px 10px;margin-bottom:8px;}
 .summary-group.by-payment{background:rgba(46,106,98,0.09);}
 .summary-group.by-category{background:rgba(169,131,46,0.12);}
+.summary-group.by-prepaid{background:rgba(181,64,46,0.09);}
 .summary-group .summary-row{padding:2px 0;}
 .summary-group-title{font-weight:600;font-size:10.5px;color:var(--ink-soft);letter-spacing:.02em;margin-bottom:3px;}
 .summary-hint{font-size:11px;color:var(--ink-soft);line-height:1.5;margin-top:8px;padding-top:8px;border-top:1px dashed var(--line);}
@@ -861,7 +868,7 @@ function emptyCategories(){
       o[c.id] = { subgroups, items };
     } else if(c.id === 'shopping'){
       o[c.id] = {
-        subgroups: ['Bic Camera', '唐吉訶德', '藥妝店'],
+        subgroups: ['Bic Camera', '唐吉軻德', '超市'],
         items: []
       };
     } else {
@@ -877,11 +884,11 @@ function ensureCategories(cats){
   CATS.forEach(c => {
     if(cats[c.id] && Array.isArray(cats[c.id].items)){
       base[c.id] = cats[c.id];
-      if(c.id === 'packing' && !base[c.id].subgroups) {
+      if(c.id === 'packing' && (!base[c.id].subgroups || base[c.id].subgroups.length === 0)) {
         base[c.id].subgroups = DEFAULT_PACKING_STRUCTURE.map(s => s.subgroup);
       }
-      if(c.id === 'shopping' && !base[c.id].subgroups) {
-        base[c.id].subgroups = ['Bic Camera', '唐吉訶德', '藥妝店'];
+      if(c.id === 'shopping' && (!base[c.id].subgroups || base[c.id].subgroups.length === 0)) {
+        base[c.id].subgroups = ['Bic Camera', '唐吉軻德', '超市'];
       }
     }
   });
@@ -900,7 +907,7 @@ let ui = {
   draft: {destination:'', start:'', end:''},
   newItem: {},
   expanded: new Set(),
-  collapsedSubgroups: new Set(),
+  expandedSubgroups: new Set(),
   subgroupsInitialized: false,
   selectedItemIds: new Set(),
   bulkOpen: new Set(),
@@ -1359,6 +1366,70 @@ function exchangeReconByCurrency(trip){
     remain: (exch[cur]||0) - (spent[cur]||0),
   }));
 }
+function groupByCurrencyAndKey(items, keyFn){
+  const byCur = {};
+  items.forEach(i=>{
+    const cur = (i.currency||'').trim() || '未填幣別';
+    const key = (keyFn(i) || '').trim() || '未分類';
+    byCur[cur] = byCur[cur] || {};
+    byCur[cur][key] = (byCur[cur][key]||0) + (parseFloat(i.amount)||0);
+  });
+  const out = {};
+  Object.keys(byCur).forEach(cur=>{
+    out[cur] = Object.entries(byCur[cur]).sort((a,b)=>b[1]-a[1]);
+  });
+  return out;
+}
+function expenseCategoryBreakdown(trip){
+  return groupByCurrencyAndKey(getAllExpenseItems(trip), i=>i.category);
+}
+function expensePaymentBreakdown(trip){
+  // 旅行固定支出不計入付款方式統計，只看手動記帳的部分
+  return groupByCurrencyAndKey(getManualExpenseItems(trip), i=>i.payment);
+}
+function expensePrepaidBreakdown(trip){
+  const items = getPrepaidExpenseItems(trip).map(i=>{
+    const srcCat = CATS.find(c=>c.id===i.prepaidSourceCategoryId);
+    return { amount: i.amount, currency: i.currency, sourceLabel: srcCat ? srcCat.label : i.prepaidSourceCategoryId };
+  });
+  return groupByCurrencyAndKey(items, i=>i.sourceLabel);
+}
+function toggleSummary(catId){
+  if(ui.summaryOpen.has(catId)) ui.summaryOpen.delete(catId);
+  else ui.summaryOpen.add(catId);
+  render();
+}
+function renderExpenseSummaryPanel(trip){
+  const open = ui.summaryOpen.has('expenses');
+  const rowsHtml = (byCur) => {
+    const currencies = Object.keys(byCur);
+    if(currencies.length === 0) return '<div class="summary-row"><span>尚無資料</span><span>–</span></div>';
+    return currencies.map(cur => `
+      <div class="summary-title" style="margin-top:10px;">💱 ${escapeHtml(cur)}</div>
+      ${byCur[cur].map(([k,v])=>`<div class="summary-row"><span>${escapeHtml(k)}</span><span>${v.toLocaleString()}</span></div>`).join('')}
+    `).join('');
+  };
+  if(!open){
+    return `<button class="summary-toggle" onclick="toggleSummary('expenses')">查看依類別／付款方式／固定支出統整 ▾</button>`;
+  }
+  return `
+    <button class="summary-toggle" onclick="toggleSummary('expenses')">收起統整 ▲</button>
+    <div class="money-panel expense-summary">
+      <div class="summary-group by-category">
+        <div class="summary-group-title">依類別</div>
+        ${rowsHtml(expenseCategoryBreakdown(trip))}
+      </div>
+      <div class="summary-group by-payment">
+        <div class="summary-group-title">依付款方式（只計算手動記帳，不含旅行固定支出）</div>
+        ${rowsHtml(expensePaymentBreakdown(trip))}
+      </div>
+      <div class="summary-group by-prepaid">
+        <div class="summary-group-title">旅行固定支出（機票／住宿…等上方分類已填金額的項目）</div>
+        ${rowsHtml(expensePrepaidBreakdown(trip))}
+      </div>
+    </div>
+  `;
+}
 function currencySuggestions(){
   const set = new Set(['JPY','USD','TWD','KRW','EUR']);
   state.trips.forEach(t=>{
@@ -1500,6 +1571,27 @@ function toggleBulk(catId){
   render();
 }
 
+function toISODate(str, trip){
+  const s = (str||'').trim();
+  if(!s) return '';
+  const full = s.match(/^(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})$/);
+  if(full) return `${full[1]}-${full[2].padStart(2,'0')}-${full[3].padStart(2,'0')}`;
+  const short = s.match(/^(\d{1,2})[\/\-](\d{1,2})$/);
+  if(short){
+    let year = new Date().getFullYear();
+    if(trip && trip.startDate){
+      const y2 = parseInt(trip.startDate.slice(0,4), 10);
+      if(!isNaN(y2)) year = y2;
+    }
+    return `${year}-${short[1].padStart(2,'0')}-${short[2].padStart(2,'0')}`;
+  }
+  return '';
+}
+function isWholeDateLine(str){
+  const s = (str||'').trim();
+  return /^\d{4}[\/\-]\d{1,2}[\/\-]\d{1,2}$/.test(s) || /^\d{1,2}[\/\-]\d{1,2}$/.test(s);
+}
+
 function applyBulk(catId){
   const trip = state.trips.find(t=>t.id===state.currentTripId);
   if(!trip) return;
@@ -1530,17 +1622,30 @@ function applyBulk(catId){
       }
     });
   } else {
+    let currentDate = '';
     lines.forEach(line=>{
       if(catDef.type === 'expense'){
+        // 單獨一行的日期（例如 7/24）會被當成標題，套用到底下每一筆花費，
+        // 直到遇到下一個日期為止；也支援直接寫在同一行開頭。
+        if(isWholeDateLine(line)){
+          currentDate = toISODate(line, trip);
+          return;
+        }
         const parts = line.split(/\s+/);
-        let date='', category='吃', text='', amount='', currency='JPY', payment='現金';
-        if(parts.length >= 4){
-          date = parts[0] || '';
+        let date=currentDate, category='吃', text='', amount='', currency='JPY', payment='現金';
+        if(parts.length >= 4 && isWholeDateLine(parts[0])){
+          date = toISODate(parts[0], trip);
           category = parts[1] || '其他';
           text = parts[2] || '';
           amount = parts[3] || '';
           currency = parts[4] || 'JPY';
           payment = parts[5] || '現金';
+        } else if(parts.length >= 3){
+          category = parts[0] || '其他';
+          text = parts[1] || '';
+          amount = parts[2] || '';
+          currency = parts[3] || 'JPY';
+          payment = parts[4] || '現金';
         } else {
           text = line;
         }
@@ -1756,7 +1861,7 @@ function renderTripList(){
       <h1>旅行規劃 All in One</h1>
       <span class="made-by">MADE BY LULUPLORE</span>
     </div>
-    <p class="brand-sub">輕鬆整合機票、住宿、行程路線與預算記帳，打造完美旅程。</p>
+    <p class="brand-sub">自助旅行SOP，輕鬆整合所有資訊，隨時掌握旅程訊息！</p>
     <div class="toolbar">
       <button onclick="exportJSON()">📥 匯出 JSON 備份</button>
       <button onclick="document.getElementById('import-input').click()">📤 匯入 JSON 備份</button>
@@ -1819,7 +1924,7 @@ function renderCategoryCard(trip, cat){
   const isBulk = ui.bulkOpen.has(cat.id);
 
   let itemsHtml = '';
-  if(items.length === 0 && cat.type !== 'expense'){
+  if(items.length === 0 && cat.type !== 'expense' && cat.id !== 'packing' && cat.id !== 'shopping'){
     itemsHtml = `<div class="empty-cat">尚無項目</div>`;
   } else {
     if (cat.id === 'packing') {
@@ -1827,12 +1932,12 @@ function renderCategoryCard(trip, cat){
       
       subgroups.forEach(subgroup => {
         const subItems = items.filter(i => i.subgroup === subgroup);
-        const isCollapsed = ui.collapsedSubgroups.has(subgroup);
+        const isCollapsed = !ui.expandedSubgroups.has(`${cat.id}::${subgroup}`);
 
         itemsHtml += `
           <div class="subgroup-container">
             <div class="subgroup-header">
-              <div class="subgroup-header-left" onclick="toggleSubgroupCollapse('${escapeAttr(subgroup)}')">
+              <div class="subgroup-header-left" onclick="toggleSubgroupCollapse('${cat.id}', '${escapeAttr(subgroup)}')">
                 <span>${isCollapsed ? '►' : '▼'}</span>
                 <input type="text" class="subgroup-title-input" value="${escapeAttr(subgroup)}" 
                        onclick="event.stopPropagation()"
@@ -1864,16 +1969,16 @@ function renderCategoryCard(trip, cat){
         `;
       }
     } else if (cat.id === 'shopping') {
-      const subgroups = catData.subgroups || ['Bic Camera', '唐吉訶德', '藥妝店'];
+      const subgroups = catData.subgroups || ['Bic Camera', '唐吉軻德', '超市'];
       
       subgroups.forEach(subgroup => {
         const subItems = items.filter(i => i.subgroup === subgroup);
-        const isCollapsed = ui.collapsedSubgroups.has(subgroup);
+        const isCollapsed = !ui.expandedSubgroups.has(`${cat.id}::${subgroup}`);
 
         itemsHtml += `
           <div class="subgroup-container">
             <div class="subgroup-header">
-              <div class="subgroup-header-left" onclick="toggleSubgroupCollapse('${escapeAttr(subgroup)}')">
+              <div class="subgroup-header-left" onclick="toggleSubgroupCollapse('${cat.id}', '${escapeAttr(subgroup)}')">
                 <span>${isCollapsed ? '►' : '▼'}</span>
                 <input type="text" class="subgroup-title-input" value="${escapeAttr(subgroup)}" 
                        onclick="event.stopPropagation()"
@@ -1940,7 +2045,7 @@ function renderCategoryCard(trip, cat){
       </div>
     `;
   } else if(cat.id === 'packing' || cat.id === 'shopping') {
-    const subgroups = catData.subgroups || (cat.id === 'packing' ? DEFAULT_PACKING_STRUCTURE.map(s => s.subgroup) : ['Bic Camera', '唐吉訶德', '藥妝店']);
+    const subgroups = catData.subgroups || (cat.id === 'packing' ? DEFAULT_PACKING_STRUCTURE.map(s => s.subgroup) : ['Bic Camera', '唐吉軻德', '超市']);
     
     addRowHtml = `
       <div class="add-group-row">
@@ -1952,6 +2057,18 @@ function renderCategoryCard(trip, cat){
           ${subgroups.map(sg => `<option value="${escapeAttr(sg)}" ${(draft.subgroup || subgroups[0]) === sg ? 'selected' : ''}>${escapeHtml(sg)}</option>`).join('')}
         </select>
         <input type="text" placeholder="${cat.hint}" value="${escapeAttr(draft.text||'')}" oninput="setDraftProp('${cat.id}', 'text', this.value)" onkeydown="if(event.key==='Enter') addItem('${cat.id}')">
+        ${cat.id === 'shopping' ? `
+          <input type="text" placeholder="數量／顏色／備註" value="${escapeAttr(draft.note||'')}" oninput="setDraftProp('${cat.id}', 'note', this.value)" onkeydown="if(event.key==='Enter') addItem('${cat.id}')">
+        ` : ''}
+        <button onclick="addItem('${cat.id}')">+</button>
+      </div>
+    `;
+  } else if(cat.id !== 'creditCard') {
+    addRowHtml = `
+      <div class="add-item-row">
+        <input type="text" placeholder="${cat.hint}" value="${escapeAttr(draft.text||'')}" oninput="setDraftProp('${cat.id}', 'text', this.value)" onkeydown="if(event.key==='Enter') addItem('${cat.id}')">
+        <input type="number" class="amt" placeholder="金額" value="${escapeAttr(draft.amount||'')}" oninput="setDraftProp('${cat.id}', 'amount', this.value)">
+        <input type="text" class="cur" placeholder="幣別" value="${escapeAttr(draft.currency||'')}" oninput="setDraftProp('${cat.id}', 'currency', this.value)">
         <button onclick="addItem('${cat.id}')">+</button>
       </div>
     `;
@@ -1959,8 +2076,6 @@ function renderCategoryCard(trip, cat){
     addRowHtml = `
       <div class="add-item-row">
         <input type="text" placeholder="${cat.hint}" value="${escapeAttr(draft.text||'')}" oninput="setDraftProp('${cat.id}', 'text', this.value)" onkeydown="if(event.key==='Enter') addItem('${cat.id}')">
-        <input type="number" class="amt" placeholder="金額" value="${escapeAttr(draft.amount||'')}" oninput="setDraftProp('${cat.id}', 'amount', this.value)">
-        <input type="text" class="cur" placeholder="幣別" value="${escapeAttr(draft.currency||'')}" oninput="setDraftProp('${cat.id}', 'currency', this.value)">
         <button onclick="addItem('${cat.id}')">+</button>
       </div>
     `;
@@ -1975,6 +2090,7 @@ function renderCategoryCard(trip, cat){
         ${totals.length===0 ? '<div style="font-size:12px;color:var(--ink-soft);">尚無花費紀錄</div>' : 
           totals.map(([cur, amt])=>`<div class="summary-row"><span>${escapeHtml(cur)}</span><span>${amt.toLocaleString()}</span></div>`).join('')}
       </div>
+      ${renderExpenseSummaryPanel(trip)}
     `;
   } else if (cat.type === 'exchange') {
     const reconList = exchangeReconByCurrency(trip);
@@ -2005,9 +2121,7 @@ function renderCategoryCard(trip, cat){
         <span class="cat-icon">${cat.icon}</span>
         <span class="cat-title">${cat.label}</span>
         ${prog ? `<span class="cat-frac">${prog.done}/${prog.total}</span>` : ''}
-        <button class="bulk-toggle" onclick="toggleBulk('${cat.id}')" title="快速貼上多筆資料">
-          <span style="font-size:13px;letter-spacing:-2px;font-weight:bold;">≡≡≡</span>
-        </button>
+        <button class="bulk-toggle" onclick="toggleBulk('${cat.id}')" title="快速貼上多筆資料">批次貼上</button>
       </div>
       
       ${isBulk ? `
@@ -2041,6 +2155,8 @@ function renderItemBlock(trip, cat, item){
           <span class="stamp-check ${isDone ? 'on' : ''}">✓</span>
           <span class="prepaid-badge">預訂支出</span>
           <input type="text" class="item-text" value="${escapeAttr(item.text)}" readonly>
+        </div>
+        <div class="item-meta-row">
           <input type="number" class="item-amount" value="${escapeAttr(item.amount)}" readonly>
           <input type="text" class="item-currency" value="${escapeAttr(item.currency)}" readonly>
         </div>
@@ -2056,16 +2172,18 @@ function renderItemBlock(trip, cat, item){
           <input type="text" class="item-day" value="${escapeAttr(item.day||'')}" onchange="updateItem('${cat.id}', '${item.id}', 'day', this.value)" placeholder="Day">
         ` : ''}
         <input type="text" class="item-text" value="${escapeAttr(item.text)}" onchange="updateItem('${cat.id}', '${item.id}', 'text', this.value)">
-        ${(cat.type==='expense' || cat.type==='checklist' || cat.type==='exchange') ? `
-          <input type="number" class="item-amount" value="${escapeAttr(item.amount||'')}" onchange="updateItem('${cat.id}', '${item.id}', 'amount', this.value)" placeholder="金額">
-          <input type="text" class="item-currency" value="${escapeAttr(item.currency||'')}" onchange="updateItem('${cat.id}', '${item.id}', 'currency', this.value)" placeholder="幣別">
-        ` : ''}
-        ${cat.type==='expense' ? `
-          <input type="date" class="item-date" value="${escapeAttr(item.date||'')}" onchange="updateItem('${cat.id}', '${item.id}', 'date', this.value)">
-        ` : ''}
         <button class="item-more" onclick="toggleExpand('${item.id}')" title="詳細備忘與連結">✎</button>
         <button class="item-delete" onclick="deleteItem('${cat.id}', '${item.id}')" title="刪除">✕</button>
       </div>
+      ${(cat.type==='expense' || cat.type==='exchange' || (cat.type==='checklist' && cat.id !== 'creditCard')) ? `
+        <div class="item-meta-row">
+          ${cat.type==='expense' ? `
+            <input type="date" class="item-date" value="${escapeAttr(item.date||'')}" onchange="updateItem('${cat.id}', '${item.id}', 'date', this.value)">
+          ` : ''}
+          <input type="number" class="item-amount" value="${escapeAttr(item.amount||'')}" onchange="updateItem('${cat.id}', '${item.id}', 'amount', this.value)" placeholder="金額">
+          <input type="text" class="item-currency" value="${escapeAttr(item.currency||'')}" onchange="updateItem('${cat.id}', '${item.id}', 'currency', this.value)" placeholder="幣別">
+        </div>
+      ` : ''}
       ${isExpanded ? `
         <div class="item-detail">
           <input type="text" class="item-link" value="${escapeAttr(item.link||'')}" onchange="updateItem('${cat.id}', '${item.id}', 'link', this.value)" placeholder="相關連結 URL (如地圖、訂單)">
@@ -2088,6 +2206,7 @@ function renderShoppingCard(trip, cat, item) {
         <span class="stamp-check ${isDone ? 'on' : ''}" style="width:16px;height:16px;font-size:9px;" onclick="toggleItem('${cat.id}', '${item.id}')">✓</span>
         <input type="text" class="item-text" style="font-size:12px;padding:2px 0;" value="${escapeAttr(item.text)}" onchange="updateItem('${cat.id}', '${item.id}', 'text', this.value)" placeholder="商品名稱">
       </div>
+      <input type="text" class="shopping-note" value="${escapeAttr(item.note||'')}" onchange="updateItem('${cat.id}', '${item.id}', 'note', this.value)" placeholder="數量／顏色／備註…">
       <div style="display:flex;gap:4px;">
         <input type="number" class="item-amount" style="width:100%;font-size:11px;padding:3px 4px;" value="${escapeAttr(item.amount||'')}" onchange="updateItem('${cat.id}', '${item.id}', 'amount', this.value)" placeholder="預估金額">
       </div>
@@ -2097,11 +2216,12 @@ function renderShoppingCard(trip, cat, item) {
 }
 
 /* ===================== 行李與購物分組操作 ===================== */
-function toggleSubgroupCollapse(subgroup){
-  if(ui.collapsedSubgroups.has(subgroup)){
-    ui.collapsedSubgroups.delete(subgroup);
+function toggleSubgroupCollapse(catId, subgroup){
+  const key = `${catId}::${subgroup}`;
+  if(ui.expandedSubgroups.has(key)){
+    ui.expandedSubgroups.delete(key);
   } else {
-    ui.collapsedSubgroups.add(subgroup);
+    ui.expandedSubgroups.add(key);
   }
   render();
 }
