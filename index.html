@@ -750,7 +750,7 @@ let isRemoteUpdating = false;
 
 /* ===================== 資料設定 ===================== */
 const CATS = [
-  {id:'flight', label:'機票', icon:'✈️', type:'checklist', hint:'例：台北→東京：BR198 長榮 09:00 - 13:25'},
+  {id:'flight', label:'機票', icon:'✈️', type:'checklist', hint:'例：10/1 台北→東京：BR198 長榮 09:00 - 13:25'},
   {id:'stay', label:'住宿', icon:'🏨', type:'checklist', hint:'例：東京大飯店 10/5-10/9 訂單號 123456'},
   {id:'visa', label:'簽證／電子入境', icon:'🛂', type:'checklist', hint:'例：填寫 Visit Japan Web / 護照影本預備'},
   {id:'insurance', label:'保險', icon:'🛡️', type:'checklist', hint:'例：富邦旅平險＋不便險（保單號碼）'},
@@ -1098,7 +1098,12 @@ async function syncToSupabase(tripsToSave = state.trips) {
 
     if (error) {
       console.error('Cloud Upsert Error:', error);
-      showToast('雲端同步失敗：' + error.message, true);
+      const upsertMsg = error.message || '';
+      if(/jwt.*issued at future|issued at future/i.test(upsertMsg)){
+        showToast('雲端同步失敗：你的裝置時間跟伺服器對不上，請到設定裡把日期與時間改成「自動設定」，再登出重新登入一次', true);
+      } else {
+        showToast('雲端同步失敗：' + upsertMsg, true);
+      }
       return false;
     }
 
@@ -1107,7 +1112,12 @@ async function syncToSupabase(tripsToSave = state.trips) {
 
   } catch (err) {
     console.error('Cloud Sync failed:', err);
-    showToast('雲端同步失敗，請稍後再試', true);
+    const errMsg = (err && err.message) || '';
+    if(/jwt.*issued at future|issued at future/i.test(errMsg)){
+      showToast('雲端同步失敗：你的裝置時間跟伺服器對不上，請到設定裡把日期與時間改成「自動設定」，再登出重新登入一次', true);
+    } else {
+      showToast('雲端同步失敗，請稍後再試', true);
+    }
     return false;
   } finally {
     isSyncing = false;
@@ -1261,7 +1271,12 @@ async function syncFromSupabase(isRealtimeTrigger = false) {
 
   } catch (e) {
     console.error('Pull from cloud error:', e);
-    showToast('無法讀取雲端資料：' + (e.message || '未知錯誤'), true);
+    const msg = (e && e.message) || '';
+    if(/jwt.*issued at future|issued at future/i.test(msg)){
+      showToast('雲端連線失敗：你的裝置時間跟伺服器對不上，請到設定裡把日期與時間改成「自動設定」，再登出重新登入一次', true);
+    } else {
+      showToast('無法讀取雲端資料：' + (msg || '未知錯誤'), true);
+    }
   } finally {
     isSyncing = false;
     render();
