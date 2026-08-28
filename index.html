@@ -2321,7 +2321,7 @@ function renderItemBlock(trip, cat, item){
         <button class="item-more" onclick="toggleExpand('${item.id}')" title="詳細備忘與連結">✎</button>
         <button class="item-delete" onclick="deleteItem('${cat.id}', '${item.id}')" title="刪除">✕</button>
       </div>
-      ${(cat.type==='expense' || cat.type==='exchange' || (cat.type==='checklist' && cat.id !== 'creditCard')) ? `
+      ${(cat.type==='expense' || cat.type==='exchange' || (cat.type==='checklist' && cat.id !== 'creditCard' && cat.id !== 'packing')) ? `
         <div class="item-meta-row">
           ${cat.type==='expense' ? `
             <input type="date" class="item-date" value="${escapeAttr(item.date||'')}" onchange="updateItem('${cat.id}', '${item.id}', 'date', this.value)">
