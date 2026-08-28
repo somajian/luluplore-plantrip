@@ -246,6 +246,10 @@ input,textarea,select{font-family:inherit;}
 .batch-checkbox{
   width:16px;height:16px;cursor:pointer;accent-color:var(--teal);flex-shrink:0;
 }
+.item-subgroup-select{
+  border:1px solid var(--line);background:var(--white);border-radius:6px;font-size:11px;
+  padding:4px 6px;color:var(--ink-soft);flex-shrink:0;max-width:110px;
+}
 .stamp-check{
   width:20px;height:20px;border-radius:50%;border:1.5px solid var(--stamp);background:var(--white);
   flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:11px;color:var(--white);
@@ -928,6 +932,8 @@ let ui = {
   newItem: {},
   expanded: new Set(),
   expandedSubgroups: new Set(),
+  batchSelected: new Set(),
+  batchMoveTarget: {},
   subgroupsInitialized: false,
   selectedItemIds: new Set(),
   bulkOpen: new Set(),
@@ -1603,6 +1609,48 @@ function deleteItemLink(catId, itemId){
   });
 }
 
+function toggleBatchSelect(itemId, checked){
+  if(checked) ui.batchSelected.add(itemId);
+  else ui.batchSelected.delete(itemId);
+}
+
+function setBatchMoveTarget(catId, value){
+  ui.batchMoveTarget[catId] = value;
+}
+
+function moveBatchSelected(catId){
+  const trip = state.trips.find(t=>t.id===state.currentTripId);
+  if(!trip) return;
+  if(ui.batchSelected.size === 0){
+    showToast('請先勾選要移動的項目', true);
+    return;
+  }
+  const target = ui.batchMoveTarget[catId] || '';
+  const items = trip.categories[catId].items;
+  let count = 0;
+  items.forEach(i=>{
+    if(ui.batchSelected.has(i.id)){
+      i.subgroup = target;
+      count++;
+    }
+  });
+  ui.batchSelected.clear();
+  scheduleSave();
+  render();
+  showToast(`已移動 ${count} 個項目到「${target || '未分組'}」`);
+}
+
+function moveSingleItemSubgroup(catId, itemId, target){
+  const trip = state.trips.find(t=>t.id===state.currentTripId);
+  if(!trip) return;
+  const item = trip.categories[catId].items.find(i=>i.id===itemId);
+  if(item){
+    item.subgroup = target;
+    scheduleSave();
+    render();
+  }
+}
+
 function toggleItem(catId, itemId){
   const trip = state.trips.find(t=>t.id===state.currentTripId);
   if(!trip) return;
@@ -2000,7 +2048,19 @@ function renderCategoryCard(trip, cat){
   } else {
     if (cat.id === 'packing') {
       const subgroups = catData.subgroups || DEFAULT_PACKING_STRUCTURE.map(s => s.subgroup);
-      
+      const batchTarget = ui.batchMoveTarget[cat.id] !== undefined ? ui.batchMoveTarget[cat.id] : '';
+
+      itemsHtml += `
+        <div class="batch-action-bar">
+          <span>批次移動：</span>
+          <select onchange="setBatchMoveTarget('${cat.id}', this.value)">
+            <option value="" ${batchTarget === '' ? 'selected' : ''}>未分組</option>
+            ${subgroups.map(sg=>`<option value="${escapeAttr(sg)}" ${batchTarget===sg?'selected':''}>${escapeHtml(sg)}</option>`).join('')}
+          </select>
+          <button onclick="moveBatchSelected('${cat.id}')">移動已勾選項目</button>
+        </div>
+      `;
+
       subgroups.forEach(subgroup => {
         const subItems = items.filter(i => i.subgroup === subgroup);
         const isCollapsed = !ui.expandedSubgroups.has(`${cat.id}::${subgroup}`);
@@ -2244,11 +2304,20 @@ function renderItemBlock(trip, cat, item){
   return `
     <div class="item-block ${isDone ? 'done' : ''}" data-id="${item.id}">
       <div class="item-row">
+        ${cat.id==='packing' ? `
+          <input type="checkbox" class="batch-checkbox" ${ui.batchSelected.has(item.id)?'checked':''} onchange="toggleBatchSelect('${item.id}', this.checked)" title="勾選以批次移動">
+        ` : ''}
         <span class="stamp-check ${isDone ? 'on' : ''}" onclick="toggleItem('${cat.id}', '${item.id}')">✓</span>
         ${cat.type==='itinerary' ? `
           <input type="text" class="item-day" value="${escapeAttr(item.day||'')}" onchange="updateItem('${cat.id}', '${item.id}', 'day', this.value)" placeholder="Day">
         ` : ''}
         <input type="text" class="item-text" value="${escapeAttr(item.text)}" onchange="updateItem('${cat.id}', '${item.id}', 'text', this.value)">
+        ${cat.id==='packing' ? `
+          <select class="item-subgroup-select" onchange="moveSingleItemSubgroup('${cat.id}', '${item.id}', this.value)" title="移動到其他分類">
+            <option value="" ${!item.subgroup ? 'selected':''}>未分組</option>
+            ${(trip.categories.packing.subgroups||[]).map(sg=>`<option value="${escapeAttr(sg)}" ${item.subgroup===sg?'selected':''}>${escapeHtml(sg)}</option>`).join('')}
+          </select>
+        ` : ''}
         <button class="item-more" onclick="toggleExpand('${item.id}')" title="詳細備忘與連結">✎</button>
         <button class="item-delete" onclick="deleteItem('${cat.id}', '${item.id}')" title="刪除">✕</button>
       </div>
