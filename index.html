@@ -220,6 +220,10 @@ input,textarea,select{font-family:inherit;}
   flex-shrink:0;
 }
 .cat-head{display:flex;align-items:center;gap:6px;padding:14px 12px 10px 16px;border-bottom:1px dashed var(--line);}
+.cat-hint-line{
+  font-size:11px;color:var(--ink-soft);padding:6px 16px;background:rgba(169,131,46,0.06);
+  border-bottom:1px dashed var(--line);line-height:1.5;user-select:text;
+}
 .cat-icon{font-size:18px;}
 .cat-title{font-family:var(--serif-ui);font-weight:600;font-size:14.5px;flex:1;}
 .cat-frac{font-family:var(--mono);font-size:12px;color:var(--ink-soft);background:var(--paper-deep);
@@ -269,7 +273,10 @@ input,textarea,select{font-family:inherit;}
   width:126px;flex-shrink:0;border:1px solid var(--line);background:var(--white);border-radius:6px;
   font-family:var(--mono);font-size:11.5px;padding:5px 6px;color:var(--ink-soft);
 }
-.item-more,.item-delete{
+.item-more{
+  background:none;border:none;color:var(--ink-soft);font-size:17px;padding:6px 9px;border-radius:6px;flex-shrink:0;margin-right:4px;
+}
+.item-delete{
   background:none;border:none;color:var(--ink-soft);font-size:12px;padding:4px 5px;border-radius:6px;flex-shrink:0;
 }
 .item-more:hover{color:var(--teal);background:rgba(46,106,98,0.08);}
@@ -280,6 +287,20 @@ input,textarea,select{font-family:inherit;}
   width:100%;
 }
 .item-note{resize:vertical;min-height:36px;font-family:var(--body);}
+.item-link-display{
+  display:flex;align-items:center;gap:6px;width:100%;
+}
+.item-link-anchor{
+  flex:1;min-width:0;border:1px solid var(--line);background:var(--white);border-radius:7px;padding:6px 9px;
+  font-size:12.5px;font-family:var(--mono);color:var(--teal);text-decoration:none;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+}
+.item-link-anchor:hover{text-decoration:underline;background:rgba(46,106,98,0.06);}
+.item-link-delete{
+  background:none;border:1px solid var(--line);color:var(--ink-soft);font-size:12px;padding:6px 8px;
+  border-radius:7px;flex-shrink:0;
+}
+.item-link-delete:hover{color:var(--stamp);background:rgba(181,64,46,0.08);border-color:var(--stamp);}
 .item-link{font-family:var(--mono);}
 .item-link::placeholder,.item-note::placeholder{color:#B5AC8E;}
 
@@ -543,6 +564,7 @@ input,textarea,select{font-family:inherit;}
 .summary-group.by-prepaid{background:rgba(181,64,46,0.09);}
 .summary-group .summary-row{padding:2px 0;}
 .summary-group-title{font-weight:600;font-size:10.5px;color:var(--ink-soft);letter-spacing:.02em;margin-bottom:3px;}
+.summary-note{font-size:10px;color:var(--ink-soft);line-height:1.4;margin-bottom:5px;font-style:italic;}
 .summary-hint{font-size:11px;color:var(--ink-soft);line-height:1.5;margin-top:8px;padding-top:8px;border-top:1px dashed var(--line);}
 
 .add-item-row{display:flex;gap:6px;padding:8px 6px 4px;flex-wrap:wrap;}
@@ -581,10 +603,11 @@ input,textarea,select{font-family:inherit;}
   border-top: 1px dashed var(--line);
   margin-top: 6px;
   border-radius: 0 0 var(--radius) var(--radius);
+  font-size: 12px;
 }
 .exchange-recon-title {
   font-weight: 600;
-  font-size: 12px;
+  font-size: 11.5px;
   color: var(--teal);
   margin-bottom: 4px;
 }
@@ -727,7 +750,7 @@ let isRemoteUpdating = false;
 
 /* ===================== 資料設定 ===================== */
 const CATS = [
-  {id:'flight', label:'機票', icon:'✈️', type:'checklist', hint:'例：去程 10/5 02:30-06:30 虎航 IT200'},
+  {id:'flight', label:'機票', icon:'✈️', type:'checklist', hint:'例：台北→東京：BR198 長榮 09:00 - 13:25'},
   {id:'stay', label:'住宿', icon:'🏨', type:'checklist', hint:'例：東京大飯店 10/5-10/9 訂單號 123456'},
   {id:'visa', label:'簽證／電子入境', icon:'🛂', type:'checklist', hint:'例：填寫 Visit Japan Web / 護照影本預備'},
   {id:'insurance', label:'保險', icon:'🛡️', type:'checklist', hint:'例：富邦旅平險＋不便險（保單號碼）'},
@@ -741,7 +764,7 @@ const CATS = [
   /* 第一點修改：更新行程路線規劃貼上資訊說明 */
   {id:'routePlanning', label:'行程路線規劃', icon:'🗺️', type:'itinerary', hint:'Day 1 <br>行程 <br>餐廳'},
   {id:'creditCard', label:'信用卡回饋', icon:'💳', type:'checklist', hint:'例：吉鶴卡（海外實體刷卡 3% 回饋無上限）'},
-  {id:'expenses', label:'花費與記帳', icon:'💰', type:'expense', hint:'每一行會自動拆成：日期 類別 項目 金額 幣別 付款方式'},
+  {id:'expenses', label:'花費與記帳', icon:'💰', type:'expense', hint:'8/25 吃 超商 1500 日幣 現金 → 每一行會自動拆成：日期 類別 項目 金額 幣別 付款方式'},
 ];
 const EXPENSE_CATS = ['吃','住','交通','購物','娛樂','景點門票','其他'];
 const PREPAID_CATEGORY_IDS = ['flight','stay','visa','taiwanTransport','overseasTransport','bookedItinerary','insurance','sim'];
@@ -868,7 +891,7 @@ function emptyCategories(){
       o[c.id] = { subgroups, items };
     } else if(c.id === 'shopping'){
       o[c.id] = {
-        subgroups: ['Bic Camera', '唐吉軻德', '超市'],
+        subgroups: [],
         items: []
       };
     } else {
@@ -886,9 +909,6 @@ function ensureCategories(cats){
       base[c.id] = cats[c.id];
       if(c.id === 'packing' && (!base[c.id].subgroups || base[c.id].subgroups.length === 0)) {
         base[c.id].subgroups = DEFAULT_PACKING_STRUCTURE.map(s => s.subgroup);
-      }
-      if(c.id === 'shopping' && (!base[c.id].subgroups || base[c.id].subgroups.length === 0)) {
-        base[c.id].subgroups = ['Bic Camera', '唐吉軻德', '超市'];
       }
     }
   });
@@ -1381,7 +1401,8 @@ function groupByCurrencyAndKey(items, keyFn){
   return out;
 }
 function expenseCategoryBreakdown(trip){
-  return groupByCurrencyAndKey(getAllExpenseItems(trip), i=>i.category);
+  // 只計算手動記帳的部分；旅行固定支出已經在下方有獨立區塊顯示，這裡不重複列出
+  return groupByCurrencyAndKey(getManualExpenseItems(trip), i=>i.category);
 }
 function expensePaymentBreakdown(trip){
   // 旅行固定支出不計入付款方式統計，只看手動記帳的部分
@@ -1410,18 +1431,19 @@ function renderExpenseSummaryPanel(trip){
     `).join('');
   };
   if(!open){
-    return `<button class="summary-toggle" onclick="toggleSummary('expenses')">查看依類別／付款方式／固定支出統整 ▾</button>`;
+    return `<button class="summary-toggle" onclick="toggleSummary('expenses')">查看依付款方式／依類別／固定支出統整 ▾</button>`;
   }
   return `
     <button class="summary-toggle" onclick="toggleSummary('expenses')">收起統整 ▲</button>
     <div class="money-panel expense-summary">
+      <div class="summary-group by-payment">
+        <div class="summary-group-title">依付款方式</div>
+        <div class="summary-note">只計算旅途當中的花費（不含旅行固定支出），方便掌握信用卡回饋的額度</div>
+        ${rowsHtml(expensePaymentBreakdown(trip))}
+      </div>
       <div class="summary-group by-category">
         <div class="summary-group-title">依類別</div>
         ${rowsHtml(expenseCategoryBreakdown(trip))}
-      </div>
-      <div class="summary-group by-payment">
-        <div class="summary-group-title">依付款方式（只計算手動記帳，不含旅行固定支出）</div>
-        ${rowsHtml(expensePaymentBreakdown(trip))}
       </div>
       <div class="summary-group by-prepaid">
         <div class="summary-group-title">旅行固定支出（機票／住宿…等上方分類已填金額的項目）</div>
@@ -1430,14 +1452,16 @@ function renderExpenseSummaryPanel(trip){
     </div>
   `;
 }
-function currencySuggestions(){
-  const set = new Set(['JPY','USD','TWD','KRW','EUR']);
-  state.trips.forEach(t=>{
-    if(t.categories){
-      ((t.categories.expenses && t.categories.expenses.items)||[]).forEach(i=>{ if(i.currency && i.currency.trim()) set.add(i.currency.trim()); });
-      ((t.categories.exchange && t.categories.exchange.items)||[]).forEach(i=>{ if(i.currency && i.currency.trim()) set.add(i.currency.trim()); });
-    }
-  });
+function currencySuggestions(trip){
+  const set = new Set();
+  if(trip && trip.categories){
+    Object.keys(trip.categories).forEach(catId=>{
+      const catData = trip.categories[catId];
+      if(catData && Array.isArray(catData.items)){
+        catData.items.forEach(i=>{ if(i.currency && i.currency.trim()) set.add(i.currency.trim()); });
+      }
+    });
+  }
   return Array.from(set);
 }
 
@@ -1533,9 +1557,35 @@ function deleteItem(catId, itemId){
   const trip = state.trips.find(t=>t.id===state.currentTripId);
   if(!trip) return;
   const items = trip.categories[catId].items;
-  trip.categories[catId].items = items.filter(i=>i.id!==itemId);
-  scheduleSave();
-  render();
+  const item = items.find(i=>i.id===itemId);
+  const label = item && item.text ? `「${item.text}」` : '這個項目';
+  showModal(`確定要刪除${label}嗎？刪除後無法復原。`, '刪除', ()=>{
+    const t = state.trips.find(t=>t.id===state.currentTripId);
+    if(!t) return;
+    t.categories[catId].items = t.categories[catId].items.filter(i=>i.id!==itemId);
+    scheduleSave();
+    render();
+  });
+}
+
+function normalizeUrl(url){
+  const u = (url||'').trim();
+  if(!u) return '';
+  if(/^https?:\/\//i.test(u)) return u;
+  return 'https://' + u;
+}
+
+function deleteItemLink(catId, itemId){
+  showModal('確定要刪除這個連結嗎？刪除後可以再貼上新的連結。', '刪除連結', ()=>{
+    const trip = state.trips.find(t=>t.id===state.currentTripId);
+    if(!trip) return;
+    const item = trip.categories[catId].items.find(i=>i.id===itemId);
+    if(item){
+      item.link = '';
+      scheduleSave();
+    }
+    render();
+  });
 }
 
 function toggleItem(catId, itemId){
@@ -1556,6 +1606,9 @@ function updateItem(catId, itemId, key, val){
   if(item){
     item[key] = val;
     scheduleSave();
+    if(key === 'currency' || key === 'payment' || key === 'category'){
+      render();
+    }
   }
 }
 
@@ -1889,6 +1942,9 @@ function renderTripDetail(){
 
   return `
     ${renderAuthBar()}
+    <datalist id="currency-list">
+      ${currencySuggestions(trip).map(c=>`<option value="${escapeAttr(c)}">`).join('')}
+    </datalist>
     <div class="trip-header">
       <div class="th-top-actions">
         <button class="back-btn" onclick="state.view='list';render();">← 返回行程列表</button>
@@ -1969,7 +2025,7 @@ function renderCategoryCard(trip, cat){
         `;
       }
     } else if (cat.id === 'shopping') {
-      const subgroups = catData.subgroups || ['Bic Camera', '唐吉軻德', '超市'];
+      const subgroups = catData.subgroups || [];
       
       subgroups.forEach(subgroup => {
         const subItems = items.filter(i => i.subgroup === subgroup);
@@ -2009,6 +2065,10 @@ function renderCategoryCard(trip, cat){
           </div>
         `;
       }
+
+      if(subgroups.length === 0 && unassigned.length === 0){
+        itemsHtml = `<div class="empty-cat">尚無分類群組，請在下方先新增一個（例如店家名稱），再開始加入商品</div>`;
+      }
     } else {
       itemsHtml = items.map(item => renderItemBlock(trip, cat, item)).join('');
     }
@@ -2025,13 +2085,14 @@ function renderCategoryCard(trip, cat){
             ${EXPENSE_CATS.map(c=>`<option value="${c}" ${draft.category===c?'selected':''}>${c}</option>`).join('')}
           </select>
           <select onchange="setDraftProp('${cat.id}', 'payment', this.value)">
+            <option value="" ${!draft.payment ? 'selected' : ''}>付款方式</option>
             ${paymentSuggestions().map(p=>`<option value="${escapeAttr(p)}" ${draft.payment===p?'selected':''}>${escapeHtml(p)}</option>`).join('')}
           </select>
         </div>
         <div class="add-item-row">
           <input type="text" placeholder="品項名稱" value="${escapeAttr(draft.text||'')}" oninput="setDraftProp('${cat.id}', 'text', this.value)" onkeydown="if(event.key==='Enter') addItem('${cat.id}')">
           <input type="number" class="amt" placeholder="金額" value="${escapeAttr(draft.amount||'')}" oninput="setDraftProp('${cat.id}', 'amount', this.value)" onkeydown="if(event.key==='Enter') addItem('${cat.id}')">
-          <input type="text" class="cur" placeholder="幣別" value="${escapeAttr(draft.currency||'JPY')}" oninput="setDraftProp('${cat.id}', 'currency', this.value)" onkeydown="if(event.key==='Enter') addItem('${cat.id}')">
+          <input type="text" class="cur" list="currency-list" placeholder="幣別" value="${escapeAttr(draft.currency||'')}" oninput="setDraftProp('${cat.id}', 'currency', this.value)" onkeydown="if(event.key==='Enter') addItem('${cat.id}')">
           <button onclick="addItem('${cat.id}')">+</button>
         </div>
       </div>
@@ -2045,7 +2106,7 @@ function renderCategoryCard(trip, cat){
       </div>
     `;
   } else if(cat.id === 'packing' || cat.id === 'shopping') {
-    const subgroups = catData.subgroups || (cat.id === 'packing' ? DEFAULT_PACKING_STRUCTURE.map(s => s.subgroup) : ['Bic Camera', '唐吉軻德', '超市']);
+    const subgroups = catData.subgroups || (cat.id === 'packing' ? DEFAULT_PACKING_STRUCTURE.map(s => s.subgroup) : []);
     
     addRowHtml = `
       <div class="add-group-row">
@@ -2068,7 +2129,7 @@ function renderCategoryCard(trip, cat){
       <div class="add-item-row">
         <input type="text" placeholder="${cat.hint}" value="${escapeAttr(draft.text||'')}" oninput="setDraftProp('${cat.id}', 'text', this.value)" onkeydown="if(event.key==='Enter') addItem('${cat.id}')">
         <input type="number" class="amt" placeholder="金額" value="${escapeAttr(draft.amount||'')}" oninput="setDraftProp('${cat.id}', 'amount', this.value)">
-        <input type="text" class="cur" placeholder="幣別" value="${escapeAttr(draft.currency||'')}" oninput="setDraftProp('${cat.id}', 'currency', this.value)">
+        <input type="text" class="cur" list="currency-list" placeholder="幣別" value="${escapeAttr(draft.currency||'')}" oninput="setDraftProp('${cat.id}', 'currency', this.value)">
         <button onclick="addItem('${cat.id}')">+</button>
       </div>
     `;
@@ -2085,12 +2146,12 @@ function renderCategoryCard(trip, cat){
   if(cat.type === 'expense'){
     const totals = expenseTotalsByCurrency(trip);
     extraFooter = `
+      ${renderExpenseSummaryPanel(trip)}
       <div class="expense-total">
         <div class="expense-total-label">總花費統計</div>
         ${totals.length===0 ? '<div style="font-size:12px;color:var(--ink-soft);">尚無花費紀錄</div>' : 
           totals.map(([cur, amt])=>`<div class="summary-row"><span>${escapeHtml(cur)}</span><span>${amt.toLocaleString()}</span></div>`).join('')}
       </div>
-      ${renderExpenseSummaryPanel(trip)}
     `;
   } else if (cat.type === 'exchange') {
     const reconList = exchangeReconByCurrency(trip);
@@ -2106,7 +2167,7 @@ function renderCategoryCard(trip, cat){
               </span>
             </div>
             <div style="font-size:10px; color:var(--ink-soft); margin-bottom:4px;">
-              (已提領 ${item.exchanged.toLocaleString()} - 現金已花費 ${item.spent.toLocaleString()})
+              (已兌換 ${item.exchanged.toLocaleString()} - 現金已花費 ${item.spent.toLocaleString()})
             </div>
           `).join('')}
         </div>
@@ -2123,6 +2184,7 @@ function renderCategoryCard(trip, cat){
         ${prog ? `<span class="cat-frac">${prog.done}/${prog.total}</span>` : ''}
         <button class="bulk-toggle" onclick="toggleBulk('${cat.id}')" title="快速貼上多筆資料">批次貼上</button>
       </div>
+      <div class="cat-hint-line">💡 ${cat.hint}</div>
       
       ${isBulk ? `
         <div class="bulk-panel">
@@ -2181,12 +2243,19 @@ function renderItemBlock(trip, cat, item){
             <input type="date" class="item-date" value="${escapeAttr(item.date||'')}" onchange="updateItem('${cat.id}', '${item.id}', 'date', this.value)">
           ` : ''}
           <input type="number" class="item-amount" value="${escapeAttr(item.amount||'')}" onchange="updateItem('${cat.id}', '${item.id}', 'amount', this.value)" placeholder="金額">
-          <input type="text" class="item-currency" value="${escapeAttr(item.currency||'')}" onchange="updateItem('${cat.id}', '${item.id}', 'currency', this.value)" placeholder="幣別">
+          <input type="text" class="item-currency" list="currency-list" value="${escapeAttr(item.currency||'')}" onchange="updateItem('${cat.id}', '${item.id}', 'currency', this.value)" placeholder="幣別">
         </div>
       ` : ''}
       ${isExpanded ? `
         <div class="item-detail">
-          <input type="text" class="item-link" value="${escapeAttr(item.link||'')}" onchange="updateItem('${cat.id}', '${item.id}', 'link', this.value)" placeholder="相關連結 URL (如地圖、訂單)">
+          ${item.link ? `
+            <div class="item-link-display">
+              <a href="${escapeAttr(normalizeUrl(item.link))}" target="_blank" rel="noopener noreferrer" class="item-link-anchor" title="${escapeAttr(item.link)}">🔗 ${escapeHtml(item.link)}</a>
+              <button class="item-link-delete" onclick="deleteItemLink('${cat.id}', '${item.id}')" title="刪除連結，重新貼上新的">✕</button>
+            </div>
+          ` : `
+            <input type="text" class="item-link" value="" onchange="updateItem('${cat.id}', '${item.id}', 'link', this.value)" placeholder="相關連結 URL (如地圖、訂單)">
+          `}
           <textarea class="item-note" onchange="updateItem('${cat.id}', '${item.id}', 'note', this.value)" placeholder="備註說明...">${escapeHtml(item.note||'')}</textarea>
         </div>
       ` : ''}
