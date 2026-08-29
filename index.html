@@ -967,6 +967,8 @@ let ui = {
   shareModal: false,
   modalImageSrc: null,
   collaboratorEmail: '',
+  shareCollaborators: [],
+  shareCollaboratorsLoading: false,
   newSubgroup: ''
 };
 let saveTimer = null;
@@ -1323,17 +1325,6 @@ supabaseClient.auth.onAuthStateChange((event, session) => {
         const sharedTripId = urlParams.get('trip_id');
 
         if (sharedTripId) {
-          if (currentUser.email) {
-            await supabaseClient
-              .from('trip_collaborators')
-              .upsert({
-                trip_id: sharedTripId,
-                user_id: currentUser.id,
-                email: currentUser.email.toLowerCase(),
-                role: 'editor'
-              }, { onConflict: 'trip_id,email' });
-          }
-
           const { data: trip, error } = await supabaseClient
             .from('trips')
             .select('*')
@@ -1358,6 +1349,8 @@ supabaseClient.auth.onAuthStateChange((event, session) => {
             state.currentTripId = formatted.id;
             state.view = 'trip';
             localStorage.setItem(STORAGE_KEY, JSON.stringify(state.trips));
+          } else {
+            showToast('無法開啟這個連結：你可能還不是這趟行程的協作者，請請對方先在「分享與協作」裡新增你的 Email', true);
           }
         }
 
@@ -2618,15 +2611,39 @@ function renderModals(){
       <div class="modal-overlay">
         <div class="modal-box" style="max-width:440px;">
           <h3 style="margin-top:0;font-size:16px;">🔗 行程共用與雲端協作</h3>
-          <p style="font-size:12.5px;color:var(--ink-soft);line-height:1.5;">複製下方連結傳送給好友，對方點開後即可一同編輯與檢視行程：</p>
-          <input type="text" readonly value="${shareUrl}" style="width:100%;padding:8px;font-size:12px;margin-bottom:12px;border:1px solid var(--line);border-radius:6px;background:var(--paper-deep);">
+          <p style="font-size:12.5px;color:var(--ink-soft);line-height:1.5;margin-bottom:6px;">
+            輸入對方的 Gmail / Email，加入後只要對方用這個帳號登入，就會自動在自己的行程列表看到這趟行程，不需要另外傳連結：
+          </p>
+          <div style="display:flex;gap:6px;margin-bottom:4px;">
+            <input type="email" placeholder="example@gmail.com" value="${escapeAttr(ui.collaboratorEmail||'')}"
+              oninput="ui.collaboratorEmail=this.value"
+              onkeydown="if(event.key==='Enter') addCollaborator()"
+              style="flex:1;padding:8px;font-size:12.5px;border:1px solid var(--line);border-radius:6px;">
+            <button class="modal-btn primary" style="flex-shrink:0;" onclick="addCollaborator()">新增協作者</button>
+          </div>
+
+          <div style="margin:14px 0 6px;font-size:12px;font-weight:600;color:var(--ink-soft);">目前的協作者</div>
+          <div style="max-height:160px;overflow-y:auto;border:1px dashed var(--line);border-radius:8px;padding:6px 8px;margin-bottom:12px;">
+            ${ui.shareCollaboratorsLoading
+              ? `<div style="font-size:12px;color:var(--ink-soft);padding:6px 2px;">讀取中…</div>`
+              : (ui.shareCollaborators.length === 0
+                ? `<div style="font-size:12px;color:var(--ink-soft);padding:6px 2px;">目前還沒有協作者</div>`
+                : ui.shareCollaborators.map(email => `
+                    <div style="display:flex;align-items:center;justify-content:space-between;padding:5px 2px;gap:8px;">
+                      <span style="font-size:12.5px;word-break:break-all;">${escapeHtml(email)}</span>
+                      <button class="batch-delete-btn" style="flex-shrink:0;border:none;background:var(--stamp);color:var(--white);border-radius:6px;padding:3px 8px;font-size:11px;cursor:pointer;" onclick="removeCollaborator('${escapeAttr(email)}')">取消協作</button>
+                    </div>
+                  `).join(''))
+            }
+          </div>
+
+          <details style="margin-bottom:12px;">
+            <summary style="font-size:12px;color:var(--ink-soft);cursor:pointer;">也可以複製連結分享（給已經是協作者的人快速開啟）</summary>
+            <input type="text" readonly value="${shareUrl}" style="width:100%;padding:8px;font-size:12px;margin-top:8px;border:1px solid var(--line);border-radius:6px;background:var(--paper-deep);box-sizing:border-box;">
+            <button class="modal-btn" style="margin-top:8px;" onclick="navigator.clipboard.writeText('${shareUrl}');showToast('已複製共用連結！');">複製連結</button>
+          </details>
+
           <div class="modal-btns">
-            <button class="modal-btn primary" onclick="
-              navigator.clipboard.writeText('${shareUrl}');
-              showToast('已複製共用連結！');
-              ui.shareModal = false;
-              render();
-            ">複製連結</button>
             <button class="modal-btn" onclick="ui.shareModal=false;render();">關閉</button>
           </div>
         </div>
@@ -2643,9 +2660,82 @@ function renderModals(){
   return html;
 }
 
-function openShareModal(){
+async function openShareModal(){
   ui.shareModal = true;
+  ui.shareCollaborators = [];
   render();
+  await loadTripCollaborators();
+}
+
+async function loadTripCollaborators(){
+  const trip = state.trips.find(t=>t.id===state.currentTripId);
+  if(!trip || !currentUser){ return; }
+  ui.shareCollaboratorsLoading = true;
+  render();
+  try{
+    const { data, error } = await supabaseClient
+      .from('trip_collaborators')
+      .select('email')
+      .eq('trip_id', trip.id);
+    if(error) throw error;
+    ui.shareCollaborators = (data || []).map(r => r.email);
+  }catch(e){
+    console.error('讀取協作者清單失敗:', e);
+    showToast('讀取協作者清單失敗：' + (e.message || '未知錯誤'), true);
+  }finally{
+    ui.shareCollaboratorsLoading = false;
+    render();
+  }
+}
+
+async function addCollaborator(){
+  const trip = state.trips.find(t=>t.id===state.currentTripId);
+  if(!trip){ return; }
+  const email = (ui.collaboratorEmail || '').trim().toLowerCase();
+  if(!email || !email.includes('@')){
+    showToast('請輸入正確的 Gmail / Email 格式', true);
+    return;
+  }
+  if(!currentUser){
+    showToast('請先登入才能新增協作者', true);
+    return;
+  }
+  try{
+    const { error } = await supabaseClient
+      .from('trip_collaborators')
+      .upsert({
+        trip_id: trip.id,
+        email: email,
+        role: 'editor'
+      }, { onConflict: 'trip_id,email' });
+    if(error) throw error;
+    ui.collaboratorEmail = '';
+    showToast(`已新增協作者：${email}`);
+    await loadTripCollaborators();
+  }catch(e){
+    console.error('新增協作者失敗:', e);
+    showToast('新增協作者失敗：' + (e.message || '未知錯誤'), true);
+  }
+}
+
+function removeCollaborator(email){
+  const trip = state.trips.find(t=>t.id===state.currentTripId);
+  if(!trip) return;
+  showModal(`確定要取消「${email}」的協作權限嗎？取消後對方將無法再看到或編輯這趟行程。`, '取消協作', async ()=>{
+    try{
+      const { error } = await supabaseClient
+        .from('trip_collaborators')
+        .delete()
+        .eq('trip_id', trip.id)
+        .eq('email', email);
+      if(error) throw error;
+      showToast(`已取消「${email}」的協作權限`);
+      await loadTripCollaborators();
+    }catch(e){
+      console.error('取消協作失敗:', e);
+      showToast('取消協作失敗：' + (e.message || '未知錯誤'), true);
+    }
+  });
 }
 
 function render(){
