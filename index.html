@@ -250,6 +250,13 @@ input,textarea,select{font-family:inherit;}
   border:1px solid var(--line);background:var(--white);border-radius:6px;font-size:11px;
   padding:4px 6px;color:var(--ink-soft);flex-shrink:0;max-width:110px;
 }
+.currency-chips{display:flex;flex-wrap:wrap;gap:5px;padding:0 6px 8px;}
+.currency-chip{
+  background:var(--white);border:1px solid var(--line);color:var(--ink-soft);font-size:11px;
+  padding:3px 10px;border-radius:20px;font-family:var(--mono);
+}
+.currency-chip:hover{border-color:var(--teal);color:var(--teal);}
+.currency-chip.active{background:var(--teal);border-color:var(--teal);color:var(--white);}
 .stamp-check{
   width:20px;height:20px;border-radius:50%;border:1.5px solid var(--stamp);background:var(--white);
   flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:11px;color:var(--white);
@@ -261,7 +268,7 @@ input,textarea,select{font-family:inherit;}
   font-family:var(--mono);font-size:11px;padding:5px 6px;color:var(--teal);text-align:center;
 }
 .item-text{
-  flex:1;min-width:110px;border:none;background:transparent;font-size:13.5px;color:var(--ink);padding:4px 2px;
+  flex:1 1 80px;min-width:80px;border:none;background:transparent;font-size:13.5px;color:var(--ink);padding:4px 2px;
   border-bottom:1px solid transparent;
 }
 .item-text:focus{outline:none;border-bottom:1.5px solid var(--brass);}
@@ -549,7 +556,7 @@ input,textarea,select{font-family:inherit;}
 .expense-meta-row input{flex:1;min-width:120px;}
 .expense-meta-row select{flex:0 0 88px;}
 
-.expense-total{padding:10px 12px 4px;margin-top:2px;border-top:1px dashed var(--line);}
+.expense-total{padding:10px 12px 4px;margin-top:2px;border-top:1px dashed var(--line);font-size:12px;}
 .expense-total-label{font-size:11.5px;color:var(--ink-soft);font-weight:600;margin-bottom:4px;}
 .summary-toggle{
   display:block;width:calc(100% - 20px);margin:2px 10px 6px;background:none;border:1px dashed var(--line);
@@ -825,26 +832,22 @@ function getManualExpenseItems(trip){
   return items;
 }
 
-function paymentSuggestions(){
-  const set = new Set(['現金']);
-  state.trips.forEach(t=>{
-    if(t.categories && t.categories.expenses && t.categories.expenses.items){
-      t.categories.expenses.items.forEach(i=>{
-        if(i.payment && i.payment.trim()) set.add(i.payment.trim());
-      });
-    }
-  });
+function paymentSuggestions(trip){
+  const set = new Set();
+  if(trip && trip.categories && trip.categories.expenses){
+    (trip.categories.expenses.items||[]).forEach(i=>{
+      if(i.payment && i.payment.trim()) set.add(i.payment.trim());
+    });
+  }
   return Array.from(set);
 }
-function categorySuggestions(){
-  const set = new Set(EXPENSE_CATS);
-  state.trips.forEach(t=>{
-    if(t.categories && t.categories.expenses && t.categories.expenses.items){
-      t.categories.expenses.items.forEach(i=>{
-        if(i.category && i.category.trim()) set.add(i.category.trim());
-      });
-    }
-  });
+function categorySuggestions(trip){
+  const set = new Set();
+  if(trip && trip.categories && trip.categories.expenses){
+    (trip.categories.expenses.items||[]).forEach(i=>{
+      if(i.category && i.category.trim()) set.add(i.category.trim());
+    });
+  }
   return Array.from(set);
 }
 
@@ -2014,6 +2017,12 @@ function renderTripDetail(){
     <datalist id="currency-list">
       ${currencySuggestions(trip).map(c=>`<option value="${escapeAttr(c)}">`).join('')}
     </datalist>
+    <datalist id="expense-cat-list">
+      ${categorySuggestions(trip).map(c=>`<option value="${escapeAttr(c)}">`).join('')}
+    </datalist>
+    <datalist id="payment-list">
+      ${paymentSuggestions(trip).map(p=>`<option value="${escapeAttr(p)}">`).join('')}
+    </datalist>
     <div class="trip-header">
       <div class="th-top-actions">
         <button class="back-btn" onclick="state.view='list';render();">← 返回行程列表</button>
@@ -2162,13 +2171,8 @@ function renderCategoryCard(trip, cat){
       <div class="add-item-row-stack">
         <div class="expense-meta-row">
           <input type="date" value="${escapeAttr(draft.date||'')}" onchange="setDraftProp('${cat.id}', 'date', this.value)">
-          <select onchange="setDraftProp('${cat.id}', 'category', this.value)">
-            ${EXPENSE_CATS.map(c=>`<option value="${c}" ${draft.category===c?'selected':''}>${c}</option>`).join('')}
-          </select>
-          <select onchange="setDraftProp('${cat.id}', 'payment', this.value)">
-            <option value="" ${!draft.payment ? 'selected' : ''}>付款方式</option>
-            ${paymentSuggestions().map(p=>`<option value="${escapeAttr(p)}" ${draft.payment===p?'selected':''}>${escapeHtml(p)}</option>`).join('')}
-          </select>
+          <input type="text" list="expense-cat-list" placeholder="類別（自訂）" value="${escapeAttr(draft.category||'')}" oninput="setDraftProp('${cat.id}', 'category', this.value)">
+          <input type="text" list="payment-list" placeholder="付款方式（自訂）" value="${escapeAttr(draft.payment||'')}" oninput="setDraftProp('${cat.id}', 'payment', this.value)">
         </div>
         <div class="add-item-row">
           <input type="text" placeholder="品項名稱" value="${escapeAttr(draft.text||'')}" oninput="setDraftProp('${cat.id}', 'text', this.value)" onkeydown="if(event.key==='Enter') addItem('${cat.id}')">
@@ -2176,6 +2180,21 @@ function renderCategoryCard(trip, cat){
           <input type="text" class="cur" list="currency-list" placeholder="幣別" value="${escapeAttr(draft.currency||'')}" oninput="setDraftProp('${cat.id}', 'currency', this.value)" onkeydown="if(event.key==='Enter') addItem('${cat.id}')">
           <button onclick="addItem('${cat.id}')">+</button>
         </div>
+        ${categorySuggestions(trip).length ? `
+          <div class="currency-chips">
+            ${categorySuggestions(trip).map(c=>`<button type="button" class="currency-chip ${draft.category===c?'active':''}" onclick="pickChip('${cat.id}', 'category', '${escapeAttr(c)}')">${escapeHtml(c)}</button>`).join('')}
+          </div>
+        ` : ''}
+        ${paymentSuggestions(trip).length ? `
+          <div class="currency-chips">
+            ${paymentSuggestions(trip).map(p=>`<button type="button" class="currency-chip ${draft.payment===p?'active':''}" onclick="pickChip('${cat.id}', 'payment', '${escapeAttr(p)}')">${escapeHtml(p)}</button>`).join('')}
+          </div>
+        ` : ''}
+        ${currencySuggestions(trip).length ? `
+          <div class="currency-chips">
+            ${currencySuggestions(trip).map(c=>`<button type="button" class="currency-chip ${draft.currency===c?'active':''}" onclick="pickChip('${cat.id}', 'currency', '${escapeAttr(c)}')">${escapeHtml(c)}</button>`).join('')}
+          </div>
+        ` : ''}
       </div>
     `;
   } else if(cat.type === 'itinerary') {
@@ -2213,6 +2232,11 @@ function renderCategoryCard(trip, cat){
         <input type="text" class="cur" list="currency-list" placeholder="幣別" value="${escapeAttr(draft.currency||'')}" oninput="setDraftProp('${cat.id}', 'currency', this.value)">
         <button onclick="addItem('${cat.id}')">+</button>
       </div>
+      ${currencySuggestions(trip).length ? `
+        <div class="currency-chips">
+          ${currencySuggestions(trip).map(c=>`<button type="button" class="currency-chip ${draft.currency===c?'active':''}" onclick="pickChip('${cat.id}', 'currency', '${escapeAttr(c)}')">${escapeHtml(c)}</button>`).join('')}
+        </div>
+      ` : ''}
     `;
   } else {
     addRowHtml = `
@@ -2335,6 +2359,12 @@ function renderItemBlock(trip, cat, item){
           <input type="number" class="item-amount" value="${escapeAttr(item.amount||'')}" onchange="updateItem('${cat.id}', '${item.id}', 'amount', this.value)" placeholder="金額">
           <input type="text" class="item-currency" list="currency-list" value="${escapeAttr(item.currency||'')}" onchange="updateItem('${cat.id}', '${item.id}', 'currency', this.value)" placeholder="幣別">
         </div>
+        ${cat.type==='expense' ? `
+          <div class="item-meta-row">
+            <input type="text" class="item-currency" list="expense-cat-list" value="${escapeAttr(item.category||'')}" onchange="updateItem('${cat.id}', '${item.id}', 'category', this.value)" placeholder="類別">
+            <input type="text" class="item-currency" list="payment-list" value="${escapeAttr(item.payment||'')}" onchange="updateItem('${cat.id}', '${item.id}', 'payment', this.value)" placeholder="付款方式">
+          </div>
+        ` : ''}
       ` : ''}
       ${isExpanded ? `
         <div class="item-detail">
@@ -2478,6 +2508,11 @@ function closeImageModal(){
 }
 
 /* ===================== 輔助函數與更新邏輯 ===================== */
+function pickChip(catId, field, value){
+  setDraftProp(catId, field, value);
+  render();
+}
+
 function setDraftProp(catId, prop, val){
   if(!ui.newItem[catId]) ui.newItem[catId] = {};
   ui.newItem[catId][prop] = val;
