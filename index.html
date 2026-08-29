@@ -1044,8 +1044,16 @@ async function signOut() {
 
   currentUser = null;
   isSyncing = false;
+
+  // 登出後把這台裝置上的資料快取也一併清掉，避免帳號的行程資料
+  // 繼續留在裝置上（例如公用電腦、借用他人手機的情況）。
+  state.trips = [];
+  state.currentTripId = null;
+  state.view = 'list';
+  try{ localStorage.removeItem(STORAGE_KEY); }catch(e){ console.error('清除本機快取失敗', e); }
+
   render();
-  showToast('已安全登出');
+  showToast('已安全登出，這台裝置上的行程資料也已清除');
 }
 
 function subscribeRealtime() {
@@ -1091,35 +1099,22 @@ async function syncToSupabase(tripsToSave = state.trips) {
   try {
     const now = new Date().toISOString();
 
-    const payload = [];
-    for (const trip of tripsToSave) {
+    // 不論是擁有者還是協作者存檔，user_id 永遠沿用這趟行程原本的擁有者，
+    // 只有在這趟行程「本來就沒有 user_id」（也就是剛建立、還沒同步過）時，
+    // 才會用目前登入的人當擁有者。這樣協作者存檔不會不小心把擁有權改成自己，
+    // 同時協作者的編輯內容也能正常送上雲端（之前的寫法會把協作者的存檔整個排除掉，等於協作者存了也白存）。
+    const payload = tripsToSave.map(trip => {
       if (!trip.updated_at) trip.updated_at = now;
-
-      let isOwner = !trip.user_id || trip.user_id === currentUser.id;
-      if (!isOwner) {
-        const { data: collab } = await supabaseClient
-          .from('trip_collaborators')
-          .select('role')
-          .eq('trip_id', trip.id)
-          .eq('user_id', currentUser.id)
-          .single();
-        if (collab && collab.role === 'owner') {
-          isOwner = true;
-        }
-      }
-
-      if (isOwner) {
-        payload.push({
-          id: trip.id,
-          user_id: trip.user_id || currentUser.id,
-          destination: trip.destination || '未命名行程',
-          start_date: trip.startDate || null,
-          end_date: trip.endDate || null,
-          categories: trip.categories || emptyCategories(),
-          updated_at: trip.updated_at
-        });
-      }
-    }
+      return {
+        id: trip.id,
+        user_id: trip.user_id || currentUser.id,
+        destination: trip.destination || '未命名行程',
+        start_date: trip.startDate || null,
+        end_date: trip.endDate || null,
+        categories: trip.categories || emptyCategories(),
+        updated_at: trip.updated_at
+      };
+    });
 
     if (payload.length === 0) return true;
 
@@ -2614,12 +2609,12 @@ function renderModals(){
           <p style="font-size:12.5px;color:var(--ink-soft);line-height:1.5;margin-bottom:6px;">
             輸入對方的 Gmail / Email，加入後只要對方用這個帳號登入，就會自動在自己的行程列表看到這趟行程，不需要另外傳連結：
           </p>
-          <div style="display:flex;gap:6px;margin-bottom:4px;">
+          <div style="display:flex;gap:6px;margin-bottom:4px;flex-wrap:wrap;">
             <input type="email" placeholder="example@gmail.com" value="${escapeAttr(ui.collaboratorEmail||'')}"
               oninput="ui.collaboratorEmail=this.value"
               onkeydown="if(event.key==='Enter') addCollaborator()"
-              style="flex:1;padding:8px;font-size:12.5px;border:1px solid var(--line);border-radius:6px;">
-            <button class="modal-btn primary" style="flex-shrink:0;" onclick="addCollaborator()">新增協作者</button>
+              style="flex:1 1 180px;min-width:0;box-sizing:border-box;padding:8px;font-size:12.5px;border:1px solid var(--line);border-radius:6px;">
+            <button class="modal-btn primary" style="flex:1 1 auto;white-space:nowrap;" onclick="addCollaborator()">新增協作者</button>
           </div>
 
           <div style="margin:14px 0 6px;font-size:12px;font-weight:600;color:var(--ink-soft);">目前的協作者</div>
