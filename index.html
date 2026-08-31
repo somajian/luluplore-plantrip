@@ -275,7 +275,7 @@ input,textarea,select{font-family:inherit;}
   font-family:var(--mono);font-size:11px;padding:5px 6px;color:var(--teal);text-align:center;
 }
 .item-text{
-  flex:1 1 80px;min-width:80px;border:none;background:transparent;font-size:13.5px;color:var(--ink);padding:4px 2px;
+  flex:1 1 100%;min-width:0;width:100%;border:none;background:transparent;font-size:13.5px;color:var(--ink);padding:4px 2px;
   border-bottom:1px solid transparent;
 }
 .item-text:focus{outline:none;border-bottom:1.5px solid var(--brass);}
@@ -621,12 +621,10 @@ input,textarea,select{font-family:inherit;}
 
 /* 行前固定支出與換匯卡片微調 */
 .prepaid-source-card .item-row { gap: 4px; }
-.prepaid-source-card .item-text { flex: 1 1 120px; min-width: 80px; }
 .prepaid-source-card .item-amount { width: 75px; flex-shrink: 0; }
 .prepaid-source-card .item-currency { width: 55px; flex-shrink: 0; }
 
 .exchange-card .item-row { gap: 6px; }
-.exchange-card .item-text { flex: 1 1 120px; min-width: 80px; }
 .exchange-card .item-amount { width: 85px; flex-shrink: 0; }
 .exchange-card .item-currency { width: 60px; flex-shrink: 0; }
 .exchange-recon-box {
@@ -747,7 +745,7 @@ input,textarea,select{font-family:inherit;}
   .cat-card[data-cat="expenses"] .add-item-row .amt{flex:1 1 95px;min-width:85px;}
   .cat-card[data-cat="expenses"] .add-item-row .cur{flex:0 0 72px;}
 
-  /* 手機版：文字欄位維持彈性寬度(跟電腦版一致)，讓編輯/刪除按鈕留在同一行最右邊 */
+  /* 手機版：金額/幣別欄位微調寬度（項目名稱固定整行顯示的規則已經是全域統一設定，不需要另外處理） */
   .item-row { flex-wrap: wrap; gap: 4px; }
   .item-amount { width: 75px; flex: 1 1 70px; }
   .item-currency { width: 55px; flex: 0 0 50px; }
