@@ -127,8 +127,15 @@ input,textarea,select{font-family:inherit;}
 }
 .trip-card:hover .trip-delete{opacity:1;}
 .trip-delete:hover{color:var(--stamp);background:rgba(181,64,46,0.08);}
+.trip-duplicate{
+  position:absolute;top:8px;right:36px;background:transparent;border:none;color:var(--ink-soft);
+  font-size:14px;padding:4px 6px;border-radius:6px;opacity:0;transition:opacity .15s;
+}
+.trip-card:hover .trip-duplicate{opacity:1;}
+.trip-duplicate:hover{color:var(--teal);background:rgba(46,106,98,0.08);}
 @media (max-width: 768px) {
   .trip-delete { opacity: 1; }
+  .trip-duplicate { opacity: 1; }
 }
 .drag-handle{
   position:absolute;bottom:6px;right:6px;font-size:17px;line-height:1;color:var(--ink-soft);
@@ -566,6 +573,11 @@ input,textarea,select{font-family:inherit;}
 .expense-meta-row select{flex:0 0 88px;}
 
 .expense-total{padding:10px 12px 4px;margin-top:2px;border-top:1px dashed var(--line);font-size:12px;}
+.clear-manual-expense-btn{
+  display:block;width:calc(100% - 20px);margin:10px 10px 4px;background:none;border:1px dashed var(--stamp);
+  color:var(--stamp);font-size:11px;font-weight:600;border-radius:7px;padding:6px;cursor:pointer;
+}
+.clear-manual-expense-btn:hover{background:rgba(181,64,46,0.08);border-style:solid;}
 .expense-total-label{font-size:11.5px;color:var(--ink-soft);font-weight:600;margin-bottom:4px;}
 .summary-toggle{
   display:block;width:calc(100% - 20px);margin:2px 10px 6px;background:none;border:1px dashed var(--line);
@@ -1557,6 +1569,38 @@ function createTrip(){
   showToast('已建立新行程！');
 }
 
+function duplicateTrip(id, e){
+  if(e) e.stopPropagation();
+  const src = state.trips.find(t=>t.id===id);
+  if(!src) return;
+
+  const cloned = JSON.parse(JSON.stringify(src));
+  cloned.id = uid();
+  cloned.destination = (src.destination || '未命名行程') + '（複製）';
+  cloned.startDate = '';
+  cloned.endDate = '';
+  delete cloned.updated_at;
+
+  if(cloned.categories){
+    Object.keys(cloned.categories).forEach(catId=>{
+      const catData = cloned.categories[catId];
+      if(catData && Array.isArray(catData.items)){
+        catData.items.forEach(item=>{
+          item.id = uid();
+          item.checked = false;
+        });
+      }
+    });
+  }
+
+  state.trips.unshift(cloned);
+  state.currentTripId = cloned.id;
+  state.view = 'trip';
+  scheduleSave();
+  render();
+  showToast(`已複製「${src.destination}」，記得改一下目的地名稱跟日期喔！`);
+}
+
 function deleteTrip(id, e){
   if(e) e.stopPropagation();
   const t = state.trips.find(x=>x.id===id);
@@ -1682,6 +1726,25 @@ function moveBatchSelected(catId){
   scheduleSave();
   render();
   showToast(`已移動 ${count} 個項目到「${target || '未分組'}」`);
+}
+
+function deleteAllManualExpenses(){
+  const trip = state.trips.find(t=>t.id===state.currentTripId);
+  if(!trip) return;
+  const items = (trip.categories.expenses && trip.categories.expenses.items) || [];
+  if(items.length === 0){
+    showToast('目前沒有手動記帳的項目', true);
+    return;
+  }
+  const count = items.length;
+  showModal(`確定要刪除所有手動輸入的花費紀錄嗎？（共 ${count} 筆）\n旅行固定支出（機票、住宿等）不會受影響。此動作無法復原。`, `刪除全部 ${count} 筆`, ()=>{
+    const t = state.trips.find(t=>t.id===state.currentTripId);
+    if(!t) return;
+    t.categories.expenses.items = [];
+    scheduleSave();
+    render();
+    showToast(`已刪除 ${count} 筆手動記帳紀錄`);
+  });
 }
 
 function deleteBatchSelected(catId){
@@ -2005,6 +2068,7 @@ function renderTripList(){
            ondrop="handleDrop(event, ${idx})"
            ondragend="handleDragEnd(event)">
         <div class="tag-hole"></div>
+        <button class="trip-duplicate" onclick="duplicateTrip('${t.id}', event)" title="複製這趟行程">⧉</button>
         <button class="trip-delete" onclick="deleteTrip('${t.id}', event)" title="刪除行程">✕</button>
         <div class="trip-card-main">
           <div class="trip-dest">${escapeHtml(t.destination)}</div>
@@ -2303,6 +2367,7 @@ function renderCategoryCard(trip, cat){
   let extraFooter = '';
   if(cat.type === 'expense'){
     const totals = expenseTotalsByCurrency(trip);
+    const manualCount = getManualExpenseItems(trip).length;
     extraFooter = `
       ${renderExpenseSummaryPanel(trip)}
       <div class="expense-total">
@@ -2310,6 +2375,9 @@ function renderCategoryCard(trip, cat){
         ${totals.length===0 ? '<div style="font-size:12px;color:var(--ink-soft);">尚無花費紀錄</div>' : 
           totals.map(([cur, amt])=>`<div class="summary-row"><span>${escapeHtml(cur)}</span><span>${amt.toLocaleString()}</span></div>`).join('')}
       </div>
+      ${manualCount > 0 ? `
+        <button class="clear-manual-expense-btn" onclick="deleteAllManualExpenses()">🗑 一鍵刪除所有手動記帳（共 ${manualCount} 筆，不含旅行固定支出）</button>
+      ` : ''}
     `;
   } else if (cat.type === 'exchange') {
     const reconList = exchangeReconByCurrency(trip);
