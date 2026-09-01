@@ -276,8 +276,13 @@ input,textarea,select{font-family:inherit;}
 }
 .item-text{
   flex:1 1 100%;min-width:0;width:100%;border:none;background:transparent;font-size:13.5px;color:var(--ink);padding:4px 2px;
-  border-bottom:1px solid transparent;
+  border-bottom:1px solid transparent;font-family:var(--body);resize:none;overflow:hidden;line-height:1.5;
 }
+.item-drag-handle{
+  cursor:grab;color:var(--ink-soft);font-size:14px;padding:2px 4px;flex-shrink:0;user-select:none;
+}
+.item-drag-handle:hover{color:var(--teal);}
+.item-drag-handle:active{cursor:grabbing;}
 .item-text:focus{outline:none;border-bottom:1.5px solid var(--brass);}
 .item-amount{
   width:90px;flex-shrink:0;border:1px solid var(--line);background:var(--white);border-radius:6px;
@@ -600,15 +605,16 @@ input,textarea,select{font-family:inherit;}
 .summary-hint{font-size:11px;color:var(--ink-soft);line-height:1.5;margin-top:8px;padding-top:8px;border-top:1px dashed var(--line);}
 
 .add-item-row{display:flex;gap:6px;padding:8px 6px 4px;flex-wrap:wrap;}
-.add-item-row input,.add-item-row select{
+.add-item-row input,.add-item-row select,.add-item-row textarea{
   flex:1;min-width:120px;border:1px solid var(--line);background:var(--white);border-radius:7px;
   padding:7px 10px;font-size:12.5px;color:var(--ink);
 }
+.add-item-row textarea{font-family:var(--body);resize:none;overflow:hidden;line-height:1.5;}
 .add-item-row input.amt{flex:0 0 80px;min-width:0;font-family:var(--mono);text-align:right;}
 .add-item-row input.cur{flex:0 0 64px;min-width:0;font-family:var(--mono);text-align:center;}
 .add-item-row input.dt{flex:0 0 126px;min-width:0;font-family:var(--mono);}
 .add-item-row select{flex:0 0 96px;}
-.add-item-row input::placeholder{color:#B5AC8E;}
+.add-item-row input::placeholder,.add-item-row textarea::placeholder{color:#B5AC8E;}
 .add-item-row button{
   background:var(--ink);color:var(--white);border:none;border-radius:7px;width:32px;flex-shrink:0;font-size:15px;
 }
@@ -979,10 +985,33 @@ function ensureCategories(cats){
   return base;
 }
 
+// 讓多行文字框依照目前輸入的行數自動增高。
+// 特意獨立寫成一個函式，不要把換行符號等特殊字元直接寫死在 HTML 的
+// oninput="..." 屬性字串裡面，避免在某些環境下處理屬性字串時被誤判/破壞。
+function autoGrowTextarea(el){
+  const lines = el.value ? el.value.split(String.fromCharCode(10)).length : 1;
+  el.rows = Math.max(1, lines);
+}
+
 function escapeHtml(s){
   return (s==null?'':String(s)).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 }
 function escapeAttr(s){ return escapeHtml(s).replace(/"/g,'&quot;'); }
+// 專門給「內嵌在行內事件屬性裡、用單引號包起來的 JS 字串參數」使用。
+// escapeAttr 只會處理 HTML 屬性層級的跳脫（" & < >），並不會處理單引號，
+// 但我們的 onclick="fn('...')" 這種寫法，值本身是被單引號包住的 JS 字串，
+// 如果使用者輸入的內容剛好有撇號（例如店家名稱 McDonald's、Trader Joe's），
+// 沒有額外處理單引號的話，會直接把這段行內 JS 字串截斷，
+// 導致瀏覽器丟出「Invalid or unexpected token」、整個頁面的互動全部壞掉。
+// 這個函式先把反斜線跟單引號做 JS 字串跳脫，再套用一般的 HTML 屬性跳脫。
+function escapeJsAttr(s){
+  const jsSafe = (s==null?'':String(s))
+    .replace(/\\/g,'\\\\')
+    .replace(/'/g,"\\'")
+    .replace(/\n/g,'\\n')
+    .replace(/\r/g,'');
+  return escapeAttr(jsSafe);
+}
 
 /* ===================== 狀態 ===================== */
 let state = { trips: loadTrips(), view: 'list', currentTripId: null };
@@ -2198,14 +2227,14 @@ function renderCategoryCard(trip, cat){
         itemsHtml += `
           <div class="subgroup-container">
             <div class="subgroup-header">
-              <div class="subgroup-header-left" onclick="toggleSubgroupCollapse('${cat.id}', '${escapeAttr(subgroup)}')">
+              <div class="subgroup-header-left" onclick="toggleSubgroupCollapse('${cat.id}', '${escapeJsAttr(subgroup)}')">
                 <span>${isCollapsed ? '►' : '▼'}</span>
                 <input type="text" class="subgroup-title-input" value="${escapeAttr(subgroup)}" 
                        onclick="event.stopPropagation()"
-                       onchange="renameSubgroup('${cat.id}', '${escapeAttr(subgroup)}', this.value)" placeholder="群組名稱">
+                       onchange="renameSubgroup('${cat.id}', '${escapeJsAttr(subgroup)}', this.value)" placeholder="群組名稱">
                 <span style="font-size:11px;color:var(--ink-soft);font-weight:normal;">(${subItems.filter(i=>i.checked).length}/${subItems.length})</span>
               </div>
-              <button class="subgroup-delete" onclick="event.stopPropagation(); deleteSubgroup('${cat.id}', '${escapeAttr(subgroup)}')">刪除群組</button>
+              <button class="subgroup-delete" onclick="event.stopPropagation(); deleteSubgroup('${cat.id}', '${escapeJsAttr(subgroup)}')">刪除群組</button>
             </div>
             ${!isCollapsed ? `
               <div class="subgroup-items">
@@ -2239,14 +2268,14 @@ function renderCategoryCard(trip, cat){
         itemsHtml += `
           <div class="subgroup-container">
             <div class="subgroup-header">
-              <div class="subgroup-header-left" onclick="toggleSubgroupCollapse('${cat.id}', '${escapeAttr(subgroup)}')">
+              <div class="subgroup-header-left" onclick="toggleSubgroupCollapse('${cat.id}', '${escapeJsAttr(subgroup)}')">
                 <span>${isCollapsed ? '►' : '▼'}</span>
                 <input type="text" class="subgroup-title-input" value="${escapeAttr(subgroup)}" 
                        onclick="event.stopPropagation()"
-                       onchange="renameSubgroup('${cat.id}', '${escapeAttr(subgroup)}', this.value)" placeholder="店家/分類名稱">
+                       onchange="renameSubgroup('${cat.id}', '${escapeJsAttr(subgroup)}', this.value)" placeholder="店家/分類名稱">
                 <span style="font-size:11px;color:var(--ink-soft);font-weight:normal;">(${subItems.filter(i=>i.checked).length}/${subItems.length})</span>
               </div>
-              <button class="subgroup-delete" onclick="event.stopPropagation(); deleteSubgroup('${cat.id}', '${escapeAttr(subgroup)}')">刪除群組</button>
+              <button class="subgroup-delete" onclick="event.stopPropagation(); deleteSubgroup('${cat.id}', '${escapeJsAttr(subgroup)}')">刪除群組</button>
             </div>
             ${!isCollapsed ? `
               <div class="shopping-grid">
@@ -2275,7 +2304,7 @@ function renderCategoryCard(trip, cat){
         itemsHtml = `<div class="empty-cat">尚無分類群組，請在下方先新增一個（例如店家名稱），再開始加入商品</div>`;
       }
     } else {
-      itemsHtml = items.map(item => renderItemBlock(trip, cat, item)).join('');
+      itemsHtml = items.map((item, idx) => renderItemBlock(trip, cat, item, idx)).join('');
     }
   }
 
@@ -2290,24 +2319,24 @@ function renderCategoryCard(trip, cat){
           <input type="text" list="payment-list" placeholder="付款方式（自訂）" value="${escapeAttr(draft.payment||'')}" oninput="setDraftProp('${cat.id}', 'payment', this.value)">
         </div>
         <div class="add-item-row">
-          <input type="text" placeholder="品項名稱" value="${escapeAttr(draft.text||'')}" oninput="setDraftProp('${cat.id}', 'text', this.value)" onkeydown="if(event.key==='Enter') addItem('${cat.id}')">
+          <textarea placeholder="品項名稱" rows="${Math.max(1,(draft.text||'').split('\n').length)}" oninput="setDraftProp('${cat.id}', 'text', this.value); autoGrowTextarea(this);">${escapeHtml(draft.text||'')}</textarea>
           <input type="number" class="amt" placeholder="金額" value="${escapeAttr(draft.amount||'')}" oninput="setDraftProp('${cat.id}', 'amount', this.value)" onkeydown="if(event.key==='Enter') addItem('${cat.id}')">
           <input type="text" class="cur" list="currency-list" placeholder="幣別" value="${escapeAttr(draft.currency||'')}" oninput="setDraftProp('${cat.id}', 'currency', this.value)" onkeydown="if(event.key==='Enter') addItem('${cat.id}')">
           <button onclick="addItem('${cat.id}')">+</button>
         </div>
         ${categorySuggestions(trip).length ? `
           <div class="currency-chips">
-            ${categorySuggestions(trip).map(c=>`<button type="button" class="currency-chip ${draft.category===c?'active':''}" onclick="pickChip('${cat.id}', 'category', '${escapeAttr(c)}')">${escapeHtml(c)}</button>`).join('')}
+            ${categorySuggestions(trip).map(c=>`<button type="button" class="currency-chip ${draft.category===c?'active':''}" onclick="pickChip('${cat.id}', 'category', '${escapeJsAttr(c)}')">${escapeHtml(c)}</button>`).join('')}
           </div>
         ` : ''}
         ${paymentSuggestions(trip).length ? `
           <div class="currency-chips">
-            ${paymentSuggestions(trip).map(p=>`<button type="button" class="currency-chip ${draft.payment===p?'active':''}" onclick="pickChip('${cat.id}', 'payment', '${escapeAttr(p)}')">${escapeHtml(p)}</button>`).join('')}
+            ${paymentSuggestions(trip).map(p=>`<button type="button" class="currency-chip ${draft.payment===p?'active':''}" onclick="pickChip('${cat.id}', 'payment', '${escapeJsAttr(p)}')">${escapeHtml(p)}</button>`).join('')}
           </div>
         ` : ''}
         ${currencySuggestions(trip).length ? `
           <div class="currency-chips">
-            ${currencySuggestions(trip).map(c=>`<button type="button" class="currency-chip ${draft.currency===c?'active':''}" onclick="pickChip('${cat.id}', 'currency', '${escapeAttr(c)}')">${escapeHtml(c)}</button>`).join('')}
+            ${currencySuggestions(trip).map(c=>`<button type="button" class="currency-chip ${draft.currency===c?'active':''}" onclick="pickChip('${cat.id}', 'currency', '${escapeJsAttr(c)}')">${escapeHtml(c)}</button>`).join('')}
           </div>
         ` : ''}
       </div>
@@ -2316,7 +2345,7 @@ function renderCategoryCard(trip, cat){
     addRowHtml = `
       <div class="add-item-row">
         <input type="text" style="flex:0 0 65px;min-width:0;font-family:var(--mono);" placeholder="Day 1" value="${escapeAttr(draft.day||'')}" oninput="setDraftProp('${cat.id}', 'day', this.value)" onkeydown="if(event.key==='Enter') addItem('${cat.id}')">
-        <input type="text" placeholder="新增行程..." value="${escapeAttr(draft.text||'')}" oninput="setDraftProp('${cat.id}', 'text', this.value)" onkeydown="if(event.key==='Enter') addItem('${cat.id}')">
+        <textarea placeholder="新增行程..." rows="${Math.max(1,(draft.text||'').split('\n').length)}" oninput="setDraftProp('${cat.id}', 'text', this.value); autoGrowTextarea(this);">${escapeHtml(draft.text||'')}</textarea>
         <button onclick="addItem('${cat.id}')">+</button>
       </div>
     `;
@@ -2342,21 +2371,21 @@ function renderCategoryCard(trip, cat){
   } else if(cat.id !== 'creditCard') {
     addRowHtml = `
       <div class="add-item-row">
-        <input type="text" placeholder="${cat.hint}" value="${escapeAttr(draft.text||'')}" oninput="setDraftProp('${cat.id}', 'text', this.value)" onkeydown="if(event.key==='Enter') addItem('${cat.id}')">
+        <textarea placeholder="${cat.hint}" rows="${Math.max(1,(draft.text||'').split('\n').length)}" oninput="setDraftProp('${cat.id}', 'text', this.value); autoGrowTextarea(this);">${escapeHtml(draft.text||'')}</textarea>
         <input type="number" class="amt" placeholder="金額" value="${escapeAttr(draft.amount||'')}" oninput="setDraftProp('${cat.id}', 'amount', this.value)">
         <input type="text" class="cur" list="currency-list" placeholder="幣別" value="${escapeAttr(draft.currency||'')}" oninput="setDraftProp('${cat.id}', 'currency', this.value)">
         <button onclick="addItem('${cat.id}')">+</button>
       </div>
       ${currencySuggestions(trip).length ? `
         <div class="currency-chips">
-          ${currencySuggestions(trip).map(c=>`<button type="button" class="currency-chip ${draft.currency===c?'active':''}" onclick="pickChip('${cat.id}', 'currency', '${escapeAttr(c)}')">${escapeHtml(c)}</button>`).join('')}
+          ${currencySuggestions(trip).map(c=>`<button type="button" class="currency-chip ${draft.currency===c?'active':''}" onclick="pickChip('${cat.id}', 'currency', '${escapeJsAttr(c)}')">${escapeHtml(c)}</button>`).join('')}
         </div>
       ` : ''}
     `;
   } else {
     addRowHtml = `
       <div class="add-item-row">
-        <input type="text" placeholder="${cat.hint}" value="${escapeAttr(draft.text||'')}" oninput="setDraftProp('${cat.id}', 'text', this.value)" onkeydown="if(event.key==='Enter') addItem('${cat.id}')">
+        <textarea placeholder="${cat.hint}" rows="${Math.max(1,(draft.text||'').split('\n').length)}" oninput="setDraftProp('${cat.id}', 'text', this.value); autoGrowTextarea(this);">${escapeHtml(draft.text||'')}</textarea>
         <button onclick="addItem('${cat.id}')">+</button>
       </div>
     `;
@@ -2429,10 +2458,12 @@ function renderCategoryCard(trip, cat){
   `;
 }
 
-function renderItemBlock(trip, cat, item){
+function renderItemBlock(trip, cat, item, idx){
   const isExpanded = ui.expanded.has(item.id);
   const isDone = item.checked;
   const isPrepaid = item.isPrepaid;
+  const canDrag = (idx !== undefined) && cat.id !== 'packing';
+  const textRows = Math.max(1, (item.text || '').split('\n').length);
 
   if (isPrepaid) {
     return `
@@ -2440,7 +2471,7 @@ function renderItemBlock(trip, cat, item){
         <div class="item-row">
           <span class="stamp-check ${isDone ? 'on' : ''}">✓</span>
           <span class="prepaid-badge">預訂支出</span>
-          <input type="text" class="item-text" value="${escapeAttr(item.text)}" readonly>
+          <textarea class="item-text" rows="${textRows}" readonly>${escapeHtml(item.text)}</textarea>
         </div>
         <div class="item-meta-row">
           <input type="number" class="item-amount" value="${escapeAttr(item.amount)}" readonly>
@@ -2451,8 +2482,14 @@ function renderItemBlock(trip, cat, item){
   }
 
   return `
-    <div class="item-block ${isDone ? 'done' : ''}" data-id="${item.id}">
+    <div class="item-block ${isDone ? 'done' : ''}" data-id="${item.id}"
+      ${canDrag ? `ondragover="handleItemDragOver(event)" ondrop="handleItemDrop(event, '${cat.id}', ${idx})"` : ''}>
       <div class="item-row">
+        ${canDrag ? `
+          <span class="item-drag-handle" draggable="true"
+            ondragstart="handleItemDragStart(event, '${cat.id}', ${idx})"
+            ondragend="handleItemDragEnd(event)" title="拖曳調整順序">⠿</span>
+        ` : ''}
         ${cat.id==='packing' ? `
           <input type="checkbox" class="batch-checkbox" ${ui.batchSelected.has(item.id)?'checked':''} onchange="toggleBatchSelect('${item.id}', this.checked)" title="勾選以批次移動">
         ` : ''}
@@ -2460,7 +2497,9 @@ function renderItemBlock(trip, cat, item){
         ${cat.type==='itinerary' ? `
           <input type="text" class="item-day" value="${escapeAttr(item.day||'')}" onchange="updateItem('${cat.id}', '${item.id}', 'day', this.value)" placeholder="Day">
         ` : ''}
-        <input type="text" class="item-text" value="${escapeAttr(item.text)}" onchange="updateItem('${cat.id}', '${item.id}', 'text', this.value)">
+        <textarea class="item-text" rows="${textRows}"
+          oninput="autoGrowTextarea(this);"
+          onchange="updateItem('${cat.id}', '${item.id}', 'text', this.value)">${escapeHtml(item.text)}</textarea>
         ${cat.id==='packing' ? `
           <select class="item-subgroup-select" onchange="moveSingleItemSubgroup('${cat.id}', '${item.id}', this.value)" title="移動到其他分類">
             <option value="" ${!item.subgroup ? 'selected':''}>未分組</option>
@@ -2507,7 +2546,7 @@ function renderShoppingCard(trip, cat, item) {
   return `
     <div class="shopping-card ${isDone ? 'done' : ''}">
       <div class="shopping-img-wrap" onclick="triggerImageUpload('${item.id}')">
-        ${item.image ? `<img src="${item.image}" alt="商品照片" onclick="event.stopPropagation(); openImageModal('${item.image}')">` : `<div class="shopping-img-placeholder">+ 新增照片</div>`}
+        ${item.image ? `<img src="${escapeAttr(item.image)}" alt="商品照片" onclick="event.stopPropagation(); openImageModal('${escapeJsAttr(item.image)}')">` : `<div class="shopping-img-placeholder">+ 新增照片</div>`}
       </div>
       <input type="file" id="img-input-${item.id}" class="img-upload-input" accept="image/*" onchange="handleImageUpload('${cat.id}', '${item.id}', event)">
       <div style="display:flex;align-items:center;gap:4px;">
@@ -2719,7 +2758,7 @@ function renderModals(){
                 : ui.shareCollaborators.map(email => `
                     <div style="display:flex;align-items:center;justify-content:space-between;padding:5px 2px;gap:8px;">
                       <span style="font-size:12.5px;word-break:break-all;">${escapeHtml(email)}</span>
-                      <button class="batch-delete-btn" style="flex-shrink:0;border:none;background:var(--stamp);color:var(--white);border-radius:6px;padding:3px 8px;font-size:11px;cursor:pointer;" onclick="removeCollaborator('${escapeAttr(email)}')">取消協作</button>
+                      <button class="batch-delete-btn" style="flex-shrink:0;border:none;background:var(--stamp);color:var(--white);border-radius:6px;padding:3px 8px;font-size:11px;cursor:pointer;" onclick="removeCollaborator('${escapeJsAttr(email)}')">取消協作</button>
                     </div>
                   `).join(''))
             }
@@ -2728,7 +2767,7 @@ function renderModals(){
           <details style="margin-bottom:12px;">
             <summary style="font-size:12px;color:var(--ink-soft);cursor:pointer;">也可以複製連結分享（給已經是協作者的人快速開啟）</summary>
             <input type="text" readonly value="${shareUrl}" style="width:100%;padding:8px;font-size:12px;margin-top:8px;border:1px solid var(--line);border-radius:6px;background:var(--paper-deep);box-sizing:border-box;">
-            <button class="modal-btn" style="margin-top:8px;" onclick="navigator.clipboard.writeText('${shareUrl}');showToast('已複製共用連結！');">複製連結</button>
+            <button class="modal-btn" style="margin-top:8px;" onclick="navigator.clipboard.writeText('${escapeJsAttr(shareUrl)}');showToast('已複製共用連結！');">複製連結</button>
           </details>
 
           <div class="modal-btns">
