@@ -583,6 +583,11 @@ input,textarea,select{font-family:inherit;}
   color:var(--stamp);font-size:11px;font-weight:600;border-radius:7px;padding:6px;cursor:pointer;
 }
 .clear-manual-expense-btn:hover{background:rgba(181,64,46,0.08);border-style:solid;}
+.reset-checked-btn{
+  display:block;width:calc(100% - 20px);margin:0 10px 8px;background:none;border:1px dashed var(--teal);
+  color:var(--teal);font-size:11px;font-weight:600;border-radius:7px;padding:6px;cursor:pointer;
+}
+.reset-checked-btn:hover{background:rgba(46,106,98,0.08);border-style:solid;}
 .expense-total-label{font-size:11.5px;color:var(--ink-soft);font-weight:600;margin-bottom:4px;}
 .summary-toggle{
   display:block;width:calc(100% - 20px);margin:2px 10px 6px;background:none;border:1px dashed var(--line);
@@ -1774,6 +1779,31 @@ function deleteAllManualExpenses(){
   });
 }
 
+function resetAllChecked(catId){
+  const trip = state.trips.find(t=>t.id===state.currentTripId);
+  if(!trip) return;
+  const items = (trip.categories[catId] && trip.categories[catId].items) || [];
+  if(items.length === 0){
+    showToast('目前沒有項目可以重設', true);
+    return;
+  }
+  const checkedCount = items.filter(i=>i.checked).length;
+  if(checkedCount === 0){
+    showToast('目前所有項目都已經是未勾選狀態了', true);
+    return;
+  }
+  const catDef = CATS.find(c=>c.id===catId);
+  const catLabel = catDef ? catDef.label : catId;
+  showModal(`確定要把「${catLabel}」裡所有項目都恢復成未勾選嗎？（共 ${checkedCount} 筆已勾選）\n項目名稱、分類群組完全不會被刪除或更動，只會重設打勾狀態。`, `恢復 ${checkedCount} 筆`, ()=>{
+    const t = state.trips.find(t=>t.id===state.currentTripId);
+    if(!t) return;
+    (t.categories[catId].items || []).forEach(i=>{ i.checked = false; });
+    scheduleSave();
+    render();
+    showToast(`已將 ${checkedCount} 筆項目恢復成未勾選`);
+  });
+}
+
 function deleteBatchSelected(catId){
   if(ui.batchSelected.size === 0){
     showToast('請先勾選要刪除的項目', true);
@@ -2218,6 +2248,7 @@ function renderCategoryCard(trip, cat){
           <button onclick="moveBatchSelected('${cat.id}')">移動已勾選項目</button>
           <button class="batch-delete-btn" onclick="deleteBatchSelected('${cat.id}')">🗑 刪除已勾選項目</button>
         </div>
+        <button class="reset-checked-btn" onclick="resetAllChecked('${cat.id}')">↺ 一鍵恢復成未勾選（保留項目與分類，只重設打勾狀態）</button>
       `;
 
       subgroups.forEach(subgroup => {
