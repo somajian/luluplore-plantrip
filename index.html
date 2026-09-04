@@ -1003,6 +1003,24 @@ function autoGrowTextarea(el){
   el.rows = Math.max(1, lines);
 }
 
+let localCacheFullWarned = false;
+function saveLocalCache(trips){
+  try{
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(trips));
+    localCacheFullWarned = false;
+  }catch(e){
+    console.warn('本機快取儲存失敗（通常是瀏覽器儲存空間已滿，雲端資料不受影響）:', e);
+    if(!localCacheFullWarned){
+      localCacheFullWarned = true;
+      const activeTag = document.activeElement && document.activeElement.tagName;
+      const userTyping = activeTag === 'INPUT' || activeTag === 'TEXTAREA';
+      if(!userTyping){
+        showToast('這台裝置的本機備份空間已滿（通常是購物清單照片太多張造成的），雲端資料完全不受影響，建議清一下購物清單裡比較大張的照片', true);
+      }
+    }
+  }
+}
+
 function escapeHtml(s){
   return (s==null?'':String(s)).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 }
@@ -1079,7 +1097,7 @@ function scheduleSave(){
 
   saveTimer = setTimeout(async ()=>{
     try{
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(state.trips));
+      saveLocalCache(state.trips);
 
       if(currentUser) {
         await saveToSupabase();
@@ -1210,7 +1228,7 @@ async function syncToSupabase(tripsToSave = state.trips) {
       return false;
     }
 
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(state.trips));
+    saveLocalCache(state.trips);
     return true;
 
   } catch (err) {
@@ -1366,7 +1384,7 @@ async function syncFromSupabase(isRealtimeTrigger = false) {
 
     tripsNeedingUpload.push(...localOnlyTrips);
 
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(state.trips));
+    saveLocalCache(state.trips);
 
     if (tripsNeedingUpload.length > 0) {
       await syncToSupabase(tripsNeedingUpload);
@@ -1429,7 +1447,7 @@ supabaseClient.auth.onAuthStateChange((event, session) => {
 
             state.currentTripId = formatted.id;
             state.view = 'trip';
-            localStorage.setItem(STORAGE_KEY, JSON.stringify(state.trips));
+            saveLocalCache(state.trips);
           } else {
             showToast('無法開啟這個連結：你可能還不是這趟行程的協作者，請請對方先在「分享與協作」裡新增你的 Email', true);
           }
@@ -2709,9 +2727,38 @@ function handleImageUpload(catId, itemId, event){
 
   const reader = new FileReader();
   reader.onload = function(e){
-    const base64Img = e.target.result;
-    updateItem(catId, itemId, 'image', base64Img);
-    render();
+    const img = new Image();
+    img.onload = function(){
+      // 把照片縮小到最長邊不超過 900px、重新用較低品質存成 JPEG，
+      // 手機直接拍的照片原始檔常常有好幾 MB，存太多張很容易把瀏覽器的
+      // 本機儲存空間塞滿；壓縮過後通常只有幾十到一百多 KB，安全很多。
+      const maxDim = 900;
+      let w = img.width, h = img.height;
+      if(w > maxDim || h > maxDim){
+        if(w >= h){ h = Math.round(h * maxDim / w); w = maxDim; }
+        else { w = Math.round(w * maxDim / h); h = maxDim; }
+      }
+      const canvas = document.createElement('canvas');
+      canvas.width = w;
+      canvas.height = h;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0, w, h);
+      let compressed;
+      try{
+        compressed = canvas.toDataURL('image/jpeg', 0.72);
+      }catch(err){
+        compressed = e.target.result;
+      }
+      updateItem(catId, itemId, 'image', compressed);
+      render();
+    };
+    img.onerror = function(){
+      showToast('這張照片讀取失敗，請換一張試試看', true);
+    };
+    img.src = e.target.result;
+  };
+  reader.onerror = function(){
+    showToast('這張照片讀取失敗，請換一張試試看', true);
   };
   reader.readAsDataURL(file);
 }
