@@ -1005,17 +1005,21 @@ function autoGrowTextarea(el){
 
 let localCacheFullWarned = false;
 function saveLocalCache(trips){
+  // 已經登入帳號的話，資料完全交給雲端負責，不需要另外佔用手機的
+  // 本機儲存空間、也不會再有「本機空間爆滿」這種問題。
+  // 只有「訪客模式（沒有登入）」才需要靠本機儲存，因為訪客沒有雲端帳號可以存。
+  if(currentUser) return;
   try{
     localStorage.setItem(STORAGE_KEY, JSON.stringify(trips));
     localCacheFullWarned = false;
   }catch(e){
-    console.warn('本機快取儲存失敗（通常是瀏覽器儲存空間已滿，雲端資料不受影響）:', e);
+    console.warn('本機快取儲存失敗（通常是瀏覽器儲存空間已滿）:', e);
     if(!localCacheFullWarned){
       localCacheFullWarned = true;
       const activeTag = document.activeElement && document.activeElement.tagName;
       const userTyping = activeTag === 'INPUT' || activeTag === 'TEXTAREA';
       if(!userTyping){
-        showToast('這台裝置的本機備份空間已滿（通常是購物清單照片太多張造成的），雲端資料完全不受影響，建議清一下購物清單裡比較大張的照片', true);
+        showToast('這台裝置的本機儲存空間已滿，訪客模式暫時無法備份，建議登入帳號改用雲端同步', true);
       }
     }
   }
