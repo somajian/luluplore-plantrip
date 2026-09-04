@@ -1092,6 +1092,13 @@ function saveToSupabase() {
 function scheduleSave(){
   clearTimeout(saveTimer);
 
+  // 從「這一刻」（排定要存檔）就先鎖住即時同步的自動重繪，一直鎖到真正存檔完成為止。
+  // 如果只在「真正開始呼叫雲端 API」那一刻才鎖，中間 600 毫秒的等待時間會有一段空窗，
+  // 萬一剛好在這段空窗期間收到即時同步的通知，就會把「還沒送出去的本地變更」
+  // （例如剛上傳、還沒存到雲端的照片）用舊資料蓋掉，導致看起來第一次都沒加進去，
+  // 要重新加一次才會出現——這就是這次的根本原因。
+  isRemoteUpdating = true;
+
   if(currentUser && state.currentTripId){
     const currentTrip = state.trips.find(t => t.id === state.currentTripId);
     if(currentTrip){
@@ -1110,6 +1117,13 @@ function scheduleSave(){
     catch(e){
       console.error('儲存失敗', e);
       showToast('儲存失敗，可能是瀏覽器處於無痕模式或儲存空間已滿，建議立即匯出備份', true);
+    }
+    finally {
+      if(!currentUser){
+        isRemoteUpdating = false;
+      }
+      // 有登入的話，isRemoteUpdating 交給 syncToSupabase() 自己的
+      // finally 區塊處理（它會在存檔完成後再多留 500 毫秒緩衝才解鎖）。
     }
   }, 600);
 }
@@ -1613,8 +1627,19 @@ function showModal(msg, confirmText='確定', onConfirm=null, cancelText='取消
 function closeModal(){ ui.confirm = null; render(); }
 function showToast(msg, isErr=false){
   ui.toast = { msg, isErr };
-  render();
-  setTimeout(()=>{ if(ui.toast && ui.toast.msg===msg) { ui.toast = null; render(); } }, 2600);
+  const activeTag = document.activeElement && document.activeElement.tagName;
+  const userTyping = activeTag === 'INPUT' || activeTag === 'TEXTAREA';
+  if(!userTyping){
+    render();
+  }
+  setTimeout(()=>{
+    if(ui.toast && ui.toast.msg===msg){
+      ui.toast = null;
+      const stillTypingTag = document.activeElement && document.activeElement.tagName;
+      const stillTyping = stillTypingTag === 'INPUT' || stillTypingTag === 'TEXTAREA';
+      if(!stillTyping){ render(); }
+    }
+  }, 2600);
 }
 
 function createTrip(){
