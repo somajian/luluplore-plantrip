@@ -1382,7 +1382,16 @@ async function syncFromSupabase(isRealtimeTrigger = false) {
     }
   } finally {
     isSyncing = false;
-    render();
+    // 如果這次是「即時同步」自動觸發的（不是使用者手動操作），
+    // 而且使用者當下正在某個欄位輸入中，就先不要重繪畫面——
+    // 不然畫面重繪會把正在輸入的欄位整個換掉，手機的鍵盤會因此收起來。
+    // state.trips 這時候已經是最新資料了，等使用者打完字、欄位失去焦點，
+    // 或是做了其他操作觸發下一次 render()，畫面自然會跟著更新。
+    const activeTag = document.activeElement && document.activeElement.tagName;
+    const userTyping = activeTag === 'INPUT' || activeTag === 'TEXTAREA';
+    if (!isRealtimeTrigger || !userTyping) {
+      render();
+    }
   }
 }
 
@@ -2607,7 +2616,7 @@ function renderShoppingCard(trip, cat, item) {
       </div>
       <input type="text" class="shopping-note" value="${escapeAttr(item.note||'')}" onchange="updateItem('${cat.id}', '${item.id}', 'note', this.value)" placeholder="數量／顏色／備註…">
       <div style="display:flex;gap:4px;">
-        <input type="number" class="item-amount" style="width:100%;font-size:11px;padding:3px 4px;" value="${escapeAttr(item.amount||'')}" onchange="updateItem('${cat.id}', '${item.id}', 'amount', this.value)" placeholder="預估金額">
+        <input type="number" class="item-amount" style="width:100%;font-size:11px;padding:3px 4px;" value="${escapeAttr(item.amount||'')}" onchange="updateItem('${cat.id}', '${item.id}', 'amount', this.value)" placeholder="預估/購買金額">
       </div>
       <button class="item-delete" style="position:absolute;top:4px;left:4px;background:rgba(255,255,255,0.85);border-radius:50%;width:20px;height:20px;padding:0;display:flex;align-items:center;justify-content:center;z-index:2;" onclick="deleteItem('${cat.id}', '${item.id}')" title="刪除這個項目">✕</button>
     </div>
