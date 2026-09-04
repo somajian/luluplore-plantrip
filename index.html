@@ -3,6 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="theme-color" content="#F1E7CB">
 <title>旅行規劃All in One</title>
 <!-- Supabase JS SDK CDN -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -27,7 +28,7 @@
   --body: 'Noto Sans TC', -apple-system, sans-serif;
 }
 *{box-sizing:border-box;}
-html,body{margin:0;padding:0;}
+html,body{margin:0;padding:0;background:var(--paper);}
 body{
   background:
     radial-gradient(circle at 10% 8%, rgba(169,131,46,0.06), transparent 40%),
@@ -1022,13 +1023,26 @@ function saveLocalCache(trips){
     console.warn('本機快取儲存失敗（通常是瀏覽器儲存空間已滿）:', e);
     if(!localCacheFullWarned){
       localCacheFullWarned = true;
-      const activeTag = document.activeElement && document.activeElement.tagName;
-      const userTyping = activeTag === 'INPUT' || activeTag === 'TEXTAREA';
+      const userTyping = isUserBusy();
       if(!userTyping){
         showToast('這台裝置的本機儲存空間已滿，訪客模式暫時無法備份，建議登入帳號改用雲端同步', true);
       }
     }
   }
+}
+
+// 判斷使用者現在是不是「正在忙」——包含兩種情況：
+// 1. 游標正在某個輸入框/文字框裡（打字中）
+// 2. 正在選取一段文字（例如長按準備複製），就算那段文字不在輸入框裡也算
+// 只要符合其中一種，這次的自動重繪就先跳過，避免打斷使用者正在做的事。
+function isUserBusy(){
+  const activeTag = document.activeElement && document.activeElement.tagName;
+  if(activeTag === 'INPUT' || activeTag === 'TEXTAREA') return true;
+  try{
+    const sel = window.getSelection();
+    if(sel && !sel.isCollapsed && sel.toString().length > 0) return true;
+  }catch(e){ /* 部分瀏覽器環境可能不支援，忽略即可 */ }
+  return false;
 }
 
 function escapeHtml(s){
@@ -1429,8 +1443,7 @@ async function syncFromSupabase(isRealtimeTrigger = false) {
     // 不然畫面重繪會把正在輸入的欄位整個換掉，手機的鍵盤會因此收起來。
     // state.trips 這時候已經是最新資料了，等使用者打完字、欄位失去焦點，
     // 或是做了其他操作觸發下一次 render()，畫面自然會跟著更新。
-    const activeTag = document.activeElement && document.activeElement.tagName;
-    const userTyping = activeTag === 'INPUT' || activeTag === 'TEXTAREA';
+    const userTyping = isUserBusy();
     if (!isRealtimeTrigger || !userTyping) {
       render();
     }
@@ -1633,17 +1646,14 @@ function showModal(msg, confirmText='確定', onConfirm=null, cancelText='取消
 function closeModal(){ ui.confirm = null; render(); }
 function showToast(msg, isErr=false){
   ui.toast = { msg, isErr };
-  const activeTag = document.activeElement && document.activeElement.tagName;
-  const userTyping = activeTag === 'INPUT' || activeTag === 'TEXTAREA';
+  const userTyping = isUserBusy();
   if(!userTyping){
     render();
   }
   setTimeout(()=>{
     if(ui.toast && ui.toast.msg===msg){
       ui.toast = null;
-      const stillTypingTag = document.activeElement && document.activeElement.tagName;
-      const stillTyping = stillTypingTag === 'INPUT' || stillTypingTag === 'TEXTAREA';
-      if(!stillTyping){ render(); }
+      if(!isUserBusy()){ render(); }
     }
   }, 2600);
 }
