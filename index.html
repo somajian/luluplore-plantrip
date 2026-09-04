@@ -457,21 +457,27 @@ input,textarea,select{font-family:inherit;}
   object-fit: cover;
   cursor: zoom-in;
 }
-.shopping-img-wrap::after {
-  content: '✎';
+.shopping-img-edit-btn {
   position: absolute;
   top: 4px;
   right: 4px;
-  background: rgba(27,42,74,0.65);
+  background: rgba(27,42,74,0.75);
   color: #fff;
-  font-size: 14px;
-  width: 26px;
-  height: 26px;
+  font-size: 15px;
+  width: 34px;
+  height: 34px;
+  border: none;
   border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
-  opacity: 0.85;
+  cursor: pointer;
+  z-index: 3;
+  padding: 0;
+}
+.shopping-img-edit-btn:hover,
+.shopping-img-edit-btn:active {
+  background: rgba(46,106,98,0.9);
 }
 .shopping-img-placeholder {
   font-size: 11px;
@@ -2654,7 +2660,10 @@ function renderShoppingCard(trip, cat, item) {
   return `
     <div class="shopping-card ${isDone ? 'done' : ''}">
       <div class="shopping-img-wrap" onclick="triggerImageUpload('${item.id}')">
-        ${item.image ? `<img src="${escapeAttr(item.image)}" alt="商品照片" onclick="event.stopPropagation(); openImageModal('${escapeJsAttr(item.image)}')">` : `<div class="shopping-img-placeholder">+ 新增照片</div>`}
+        ${item.image
+          ? `<img src="${escapeAttr(item.image)}" alt="商品照片" onclick="event.stopPropagation(); openImageModal('${escapeJsAttr(item.image)}')">
+             <button type="button" class="shopping-img-edit-btn" onclick="event.stopPropagation(); triggerImageUpload('${item.id}')" title="更換照片">✎</button>`
+          : `<div class="shopping-img-placeholder">+ 新增照片</div>`}
       </div>
       <input type="file" id="img-input-${item.id}" class="img-upload-input" accept="image/*" onchange="handleImageUpload('${cat.id}', '${item.id}', event)">
       <div style="display:flex;align-items:center;gap:4px;">
