@@ -462,16 +462,16 @@ input,textarea,select{font-family:inherit;}
   position: absolute;
   top: 4px;
   right: 4px;
-  background: rgba(27,42,74,0.6);
+  background: rgba(27,42,74,0.65);
   color: #fff;
-  font-size: 10px;
-  width: 18px;
-  height: 18px;
+  font-size: 14px;
+  width: 26px;
+  height: 26px;
   border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
-  opacity: 0.7;
+  opacity: 0.85;
 }
 .shopping-img-placeholder {
   font-size: 11px;
@@ -536,6 +536,11 @@ input,textarea,select{font-family:inherit;}
 }
 .bulk-panel textarea::placeholder{color:#B5AC8E;}
 .bulk-panel-btns{display:flex;gap:8px;align-items:center;}
+.bulk-target-row{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--ink-soft);}
+.bulk-target-row select{
+  flex:1;border:1px solid var(--line);background:var(--white);border-radius:6px;
+  padding:5px 8px;font-size:12px;color:var(--ink);
+}
 .bulk-panel button{
   background:var(--ink);color:var(--white);border:none;border-radius:7px;padding:6px 12px;font-size:12px;font-weight:600;
 }
@@ -1032,6 +1037,7 @@ let ui = {
   selectedItemIds: new Set(),
   bulkOpen: new Set(),
   bulkDraft: {},
+  bulkSubgroupTarget: {},
   summaryOpen: new Set(),
   confirm: null,
   toast: null,
@@ -1897,6 +1903,8 @@ function applyBulk(catId){
 
   const lines = raw.split('\n').map(l=>l.trim()).filter(Boolean);
   const catDef = CATS.find(c=>c.id===catId);
+  const tripCatData = trip.categories[catId];
+  const catData_hasSubgroups = !!(tripCatData && tripCatData.subgroups && tripCatData.subgroups.length > 0);
 
   if(catDef.type === 'itinerary'){
     // 單獨一行的「Day 1」「D1」「第1天」會被當成標題，不會自己變成一筆項目，
@@ -1919,6 +1927,7 @@ function applyBulk(catId){
       }
     });
   } else {
+    const targetSubgroup = (catData_hasSubgroups) ? (ui.bulkSubgroupTarget[catId] || '') : undefined;
     let currentDate = '';
     lines.forEach(line=>{
       if(catDef.type === 'expense'){
@@ -1947,6 +1956,9 @@ function applyBulk(catId){
           text = line;
         }
         addItem(catId, { text, date, category, amount, currency, payment });
+      }
+      else if(targetSubgroup !== undefined){
+        addItem(catId, { text: line, subgroup: targetSubgroup });
       }
       else {
         addItem(catId, { text: line });
@@ -2472,6 +2484,15 @@ function renderCategoryCard(trip, cat){
       
       ${isBulk ? `
         <div class="bulk-panel">
+          ${(catData.subgroups && catData.subgroups.length > 0) ? `
+            <div class="bulk-target-row">
+              <span>貼到這個分類：</span>
+              <select onchange="ui.bulkSubgroupTarget['${cat.id}']=this.value;">
+                <option value="">未分組</option>
+                ${catData.subgroups.map(sg=>`<option value="${escapeAttr(sg)}" ${(ui.bulkSubgroupTarget[cat.id])===sg?'selected':''}>${escapeHtml(sg)}</option>`).join('')}
+              </select>
+            </div>
+          ` : ''}
           <textarea placeholder="一行一筆資料，直接貼上文字..." oninput="ui.bulkDraft['${cat.id}']=this.value">${escapeHtml(ui.bulkDraft[cat.id]||'')}</textarea>
           <div class="bulk-panel-btns">
             <button onclick="applyBulk('${cat.id}')">確定加入</button>
