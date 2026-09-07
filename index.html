@@ -2021,7 +2021,12 @@ function applyBulk(catId){
           currentDate = toISODate(line, trip);
           return;
         }
-        const parts = line.split(/\s+/);
+        // 如果品項名稱後面直接接冒號、再接金額（例如「機場巴士：37000」），
+        // 先把冒號換成空白，這樣後面用空白拆欄位時才不會把「品項：金額」
+        // 誤判成同一個詞。只處理「文字＋冒號＋數字」的情況，
+        // 像「09:00」這種數字＋冒號＋數字的時間格式不會被誤改。
+        const normalizedLine = line.replace(/([^\d\s：:])[：:]\s*(?=\d)/g, '$1 ');
+        const parts = normalizedLine.split(/\s+/);
         let date=currentDate, category='吃', text='', amount='', currency='JPY', payment='現金';
         if(parts.length >= 4 && isWholeDateLine(parts[0])){
           date = toISODate(parts[0], trip);
