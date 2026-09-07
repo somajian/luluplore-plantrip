@@ -3053,17 +3053,39 @@ function removeCollaborator(email){
   });
 }
 
+let lastRenderedView = null;
+let lastRenderedTripId = null;
+
 function render(){
   const app = document.getElementById('app');
   if(!app) return;
 
-  if(state.view === 'list'){
-    app.innerHTML = renderTripList();
-  } else if(state.view === 'trip'){
-    app.innerHTML = renderTripDetail();
-  }
+  // 只有在「還是同一頁、同一趟行程」的情況下才需要保留捲動位置——
+  // 這種情況通常是背景自動存檔、同步完成之類的原因觸發重繪，
+  // 使用者人還在同一個地方看資料，不應該被重繪打斷、跳回最上面。
+  // 如果是切換到不同的行程、或切換到列表／詳細頁，代表是使用者自己
+  // 主動導覽到別的地方，這時候跳回最上面才是正常、預期中的行為。
+  const scrollY = window.scrollY;
+  const contextChanged = (lastRenderedView !== null) &&
+    (lastRenderedView !== state.view || lastRenderedTripId !== state.currentTripId);
+  lastRenderedView = state.view;
+  lastRenderedTripId = state.currentTripId;
 
-  app.innerHTML += renderModals();
+  let html = '';
+  if(state.view === 'list'){
+    html = renderTripList();
+  } else if(state.view === 'trip'){
+    html = renderTripDetail();
+  }
+  html += renderModals();
+  app.innerHTML = html;
+
+  if(contextChanged){
+    window.scrollTo(0, 0);
+  } else {
+    window.scrollTo(0, scrollY);
+    requestAnimationFrame(()=>{ window.scrollTo(0, scrollY); });
+  }
 }
 
 /* 程式進入點 */
