@@ -1239,7 +1239,7 @@ async function syncToSupabase(tripsToSave = state.trips) {
 
   isSyncing = true;
   isRemoteUpdating = true;
-  render();
+  if(!isUserBusy()) render();
 
   try {
     const now = new Date().toISOString();
@@ -1293,7 +1293,7 @@ async function syncToSupabase(tripsToSave = state.trips) {
   } finally {
     isSyncing = false;
     setTimeout(() => { isRemoteUpdating = false; }, 500);
-    render();
+    if(!isUserBusy()) render();
   }
 }
 
@@ -1306,7 +1306,7 @@ async function syncFromSupabase(isRealtimeTrigger = false) {
 
   if (!isRealtimeTrigger) {
     isSyncing = true;
-    render();
+    if(!isUserBusy()) render();
   }
 
   try {
@@ -1510,7 +1510,7 @@ supabaseClient.auth.onAuthStateChange((event, session) => {
       }
     }, 0);
 
-    render();
+    if(!isUserBusy()) render();
   } else {
     currentUser = null;
 
@@ -1519,7 +1519,7 @@ supabaseClient.auth.onAuthStateChange((event, session) => {
       realtimeChannel = null;
     }
 
-    render();
+    if(!isUserBusy()) render();
   }
 });
 
