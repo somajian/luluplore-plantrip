@@ -843,7 +843,7 @@ const CATS = [
   /* 第一點修改：更新行程路線規劃貼上資訊說明 */
   {id:'routePlanning', label:'行程路線規劃', icon:'🗺️', type:'itinerary', hint:'Day 1 <br>行程 <br>餐廳'},
   {id:'creditCard', label:'信用卡回饋', icon:'💳', type:'checklist', hint:'例：吉鶴卡（海外實體刷卡 3% 回饋無上限）'},
-  {id:'expenses', label:'花費與記帳', icon:'💰', type:'expense', hint:'8/25 吃 超商 1500 日幣 現金 → 每一行會自動拆成：日期 類別 項目 金額 幣別 付款方式'},
+  {id:'expenses', label:'花費與記帳', icon:'💰', type:'expense', hint:'8/25 吃 超商：1500 日幣（現金） → 每一行會自動拆成：日期 類別 項目 金額 幣別 付款方式（冒號、括號都可以加，也可以不加）'},
 ];
 const EXPENSE_CATS = ['吃','住','交通','購物','娛樂','景點門票','其他'];
 const PREPAID_CATEGORY_IDS = ['flight','stay','visa','taiwanTransport','overseasTransport','bookedItinerary','insurance','sim'];
@@ -2021,12 +2021,22 @@ function applyBulk(catId){
           currentDate = toISODate(line, trip);
           return;
         }
+        // 如果有用括號（全形（）或半形()）標出付款方式，例如「...KRW（現金）」，
+        // 先把括號內容抓出來當付款方式、並從整行移除，剩下的部分再照後面的規則解析。
+        // 沒有用括號的話，就沿用原本「最後一個詞是付款方式」的判斷方式。
+        let workingLine = line;
+        let parsedPayment = null;
+        const payMatch = workingLine.match(/[（(]([^）)]*)[）)]/);
+        if(payMatch){
+          parsedPayment = payMatch[1].trim();
+          workingLine = (workingLine.slice(0, payMatch.index) + workingLine.slice(payMatch.index + payMatch[0].length)).trim();
+        }
         // 如果品項名稱後面直接接冒號、再接金額（例如「機場巴士：37000」），
         // 先把冒號換成空白，這樣後面用空白拆欄位時才不會把「品項：金額」
         // 誤判成同一個詞。只處理「文字＋冒號＋數字」的情況，
         // 像「09:00」這種數字＋冒號＋數字的時間格式不會被誤改。
-        const normalizedLine = line.replace(/([^\d\s：:])[：:]\s*(?=\d)/g, '$1 ');
-        const parts = normalizedLine.split(/\s+/);
+        const normalizedLine = workingLine.replace(/([^\d\s：:])[：:]\s*(?=\d)/g, '$1 ');
+        const parts = normalizedLine.split(/\s+/).filter(Boolean);
         let date=currentDate, category='吃', text='', amount='', currency='JPY', payment='現金';
         if(parts.length >= 4 && isWholeDateLine(parts[0])){
           date = toISODate(parts[0], trip);
@@ -2034,15 +2044,16 @@ function applyBulk(catId){
           text = parts[2] || '';
           amount = parts[3] || '';
           currency = parts[4] || 'JPY';
-          payment = parts[5] || '現金';
+          payment = parsedPayment !== null ? parsedPayment : (parts[5] || '現金');
         } else if(parts.length >= 3){
           category = parts[0] || '其他';
           text = parts[1] || '';
           amount = parts[2] || '';
           currency = parts[3] || 'JPY';
-          payment = parts[4] || '現金';
+          payment = parsedPayment !== null ? parsedPayment : (parts[4] || '現金');
         } else {
-          text = line;
+          text = parts.join(' ') || workingLine;
+          payment = parsedPayment !== null ? parsedPayment : '現金';
         }
         addItem(catId, { text, date, category, amount, currency, payment });
       }
