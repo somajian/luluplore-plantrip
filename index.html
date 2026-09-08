@@ -2117,7 +2117,20 @@ function applyBulk(catId){
             leftTokens.shift();
           }
           if(leftTokens.length){
-            category = leftTokens.shift();
+            // 先看看第一個詞的開頭，是不是剛好跟這趟行程「已經用過的類別」
+            // 完全吻合、但後面還黏著其他字（例如漏打空格變成「生活用品Bic」）。
+            // 如果有，就自動在那裡切開，類別歸類別、剩下的字歸品項名稱。
+            const firstToken = leftTokens[0];
+            const knownCategories = categorySuggestions(trip);
+            const matchedCat = knownCategories
+              .filter(c => firstToken.startsWith(c) && firstToken.length > c.length)
+              .sort((a, b) => b.length - a.length)[0];
+            if(matchedCat){
+              category = matchedCat;
+              leftTokens[0] = firstToken.slice(matchedCat.length);
+            } else {
+              category = leftTokens.shift();
+            }
           }
           text = leftTokens.join(' ');
 
