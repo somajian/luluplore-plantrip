@@ -1842,7 +1842,7 @@ function addItem(catId, itemData = {}){
     sortExpenseItemsByDate(trip);
   }
 
-  ui.newItem[catId] = { text:'', amount:'', currency: draft.currency || 'JPY', category:'吃', payment:'現金', date:'', day:'', note:'', link:'', subgroup: resolvedSubgroup };
+  ui.newItem[catId] = { text:'', amount:'', currency: draft.currency || '', category:'吃', payment:'現金', date:'', day:'', note:'', link:'', subgroup: resolvedSubgroup };
   
   scheduleSave();
   render();
@@ -3063,6 +3063,11 @@ function updateTripDate(tripId, key, val){
 function openTrip(id){
   state.currentTripId = id;
   state.view = 'trip';
+  // 切換到不同行程時，把「新增項目」用的暫存草稿清空。
+  // 這些草稿原本是整個 App 共用、不是跟著行程分開存的，
+  // 如果不清空，換到別的行程時，上一趟行程用過的幣別/類別/付款方式
+  // 這些草稿值會殘留下來，讓人誤以為是這趟行程自動記住的。
+  ui.newItem = {};
   render();
 }
 
