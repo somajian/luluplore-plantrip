@@ -2063,30 +2063,53 @@ function applyBulk(catId){
           parsedPayment = payMatch[1].trim();
           workingLine = (workingLine.slice(0, payMatch.index) + workingLine.slice(payMatch.index + payMatch[0].length)).trim();
         }
-        // 如果品項名稱後面直接接冒號、再接金額（例如「機場巴士：37000」），
-        // 先把冒號換成空白，這樣後面用空白拆欄位時才不會把「品項：金額」
-        // 誤判成同一個詞。只處理「文字＋冒號＋數字」的情況，
-        // 像「09:00」這種數字＋冒號＋數字的時間格式不會被誤改。
-        const normalizedLine = workingLine.replace(/([^\d\s：:])[：:]\s*(?=\d)/g, '$1 ');
-        const parts = normalizedLine.split(/\s+/).filter(Boolean);
-        let date=currentDate, category='吃', text='', amount='', currency='JPY', payment='現金';
-        if(parts.length >= 4 && isWholeDateLine(parts[0])){
-          date = toISODate(parts[0], trip);
-          category = parts[1] || '其他';
-          text = parts[2] || '';
-          amount = parts[3] || '';
-          currency = parts[4] || 'JPY';
-          payment = parsedPayment !== null ? parsedPayment : (parts[5] || '現金');
-        } else if(parts.length >= 3){
-          category = parts[0] || '其他';
-          text = parts[1] || '';
-          amount = parts[2] || '';
-          currency = parts[3] || 'JPY';
-          payment = parsedPayment !== null ? parsedPayment : (parts[4] || '現金');
+
+        let date=currentDate, category='吃', text='', amount='', currency='JPY';
+
+        // 找出「金額冒號」的位置（文字後面直接接冒號、再接數字，例如「Bic Camera：15000」），
+        // 用這個位置把整行切成左右兩半：左邊是「日期 類別 品項」，右邊是「金額 幣別」。
+        // 這樣品項名稱就算中間有空格（例如「Bic Camera」這種兩個字的店名），
+        // 也不會被誤拆成兩筆不同的欄位。
+        const colonMatch = workingLine.match(/[：:]\s*(?=\d)/);
+        if(colonMatch){
+          const idx = colonMatch.index;
+          const leftPart = workingLine.slice(0, idx).trim();
+          const rightPart = workingLine.slice(idx + colonMatch[0].length).trim();
+
+          const leftTokens = leftPart.split(/\s+/).filter(Boolean);
+          if(leftTokens.length && isWholeDateLine(leftTokens[0])){
+            date = toISODate(leftTokens[0], trip);
+            leftTokens.shift();
+          }
+          if(leftTokens.length){
+            category = leftTokens.shift();
+          }
+          text = leftTokens.join(' ');
+
+          const rightTokens = rightPart.split(/\s+/).filter(Boolean);
+          amount = rightTokens[0] || '';
+          currency = rightTokens[1] || 'JPY';
         } else {
-          text = parts.join(' ') || workingLine;
-          payment = parsedPayment !== null ? parsedPayment : '現金';
+          // 沒有加冒號的話，沿用原本「用空白定位拆欄位」的舊邏輯（相容舊寫法；
+          // 但如果品項名稱本身有空格，建議加上冒號會更準確）。
+          const parts = workingLine.split(/\s+/).filter(Boolean);
+          if(parts.length >= 4 && isWholeDateLine(parts[0])){
+            date = toISODate(parts[0], trip);
+            category = parts[1] || '其他';
+            text = parts[2] || '';
+            amount = parts[3] || '';
+            currency = parts[4] || 'JPY';
+          } else if(parts.length >= 3){
+            category = parts[0] || '其他';
+            text = parts[1] || '';
+            amount = parts[2] || '';
+            currency = parts[3] || 'JPY';
+          } else {
+            text = parts.join(' ') || workingLine;
+          }
         }
+
+        const payment = parsedPayment !== null ? parsedPayment : '現金';
         addItem(catId, { text, date, category, amount, currency, payment });
       }
       else if(targetSubgroup !== undefined){
