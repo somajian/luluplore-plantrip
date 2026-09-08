@@ -289,9 +289,11 @@ input,textarea,select{font-family:inherit;}
 }
 .item-drag-handle{
   cursor:grab;color:var(--ink-soft);font-size:14px;padding:2px 4px;flex-shrink:0;user-select:none;
+  touch-action:none;
 }
 .item-drag-handle:hover{color:var(--teal);}
 .item-drag-handle:active{cursor:grabbing;}
+.item-block.drag-over-target{background:rgba(46,106,98,0.12);border-radius:8px;outline:1.5px dashed var(--teal);}
 .item-text:focus{outline:none;border-bottom:1.5px solid var(--brass);}
 .item-amount{
   width:90px;flex-shrink:0;border:1px solid var(--line);background:var(--white);border-radius:6px;
@@ -926,7 +928,7 @@ function getManualExpenseItems(trip){
 }
 
 function getHiddenChips(trip, field){
-  return (trip && trip.hiddenChips && trip.hiddenChips[field]) || [];
+  return (trip && trip.categories && trip.categories.hiddenChips && trip.categories.hiddenChips[field]) || [];
 }
 
 function paymentSuggestions(trip){
@@ -1030,6 +1032,13 @@ function ensureCategories(cats){
       }
     }
   });
+  // hiddenChips（被移除的記憶膠囊清單）借放在 categories 這個物件裡，
+  // 因為 categories 整包都會確實存到雲端／本機，不會像獨立欄位一樣
+  // 存檔時被漏掉。這裡要額外明確保留它，不然會被上面的 CATS.forEach
+  // 正規化流程忽略掉、每次重新整理都被重置。
+  if(cats.hiddenChips){
+    base.hiddenChips = cats.hiddenChips;
+  }
   return base;
 }
 
@@ -1776,6 +1785,25 @@ function deleteTrip(id, e){
   });
 }
 
+// 花費與記帳依照日期由小到大自動排序；沒有填日期的排在最後面，
+// 同一天的花費之間維持原本加入的先後順序（不會互相跳動位置）。
+function sortExpenseItemsByDate(trip){
+  if(!trip || !trip.categories || !trip.categories.expenses) return;
+  const items = trip.categories.expenses.items;
+  if(!Array.isArray(items)) return;
+  const withIndex = items.map((item, i) => ({ item, i }));
+  withIndex.sort((a, b) => {
+    const da = a.item.date || '';
+    const db = b.item.date || '';
+    if(!da && !db) return a.i - b.i;
+    if(!da) return 1;
+    if(!db) return -1;
+    if(da === db) return a.i - b.i;
+    return da < db ? -1 : 1;
+  });
+  trip.categories.expenses.items = withIndex.map(x => x.item);
+}
+
 function addItem(catId, itemData = {}){
   const trip = state.trips.find(t=>t.id===state.currentTripId);
   if(!trip) return;
@@ -1809,6 +1837,10 @@ function addItem(catId, itemData = {}){
   if(!trip.categories[catId].items) trip.categories[catId].items = [];
 
   trip.categories[catId].items.push(newItemObj);
+
+  if(catId === 'expenses'){
+    sortExpenseItemsByDate(trip);
+  }
 
   ui.newItem[catId] = { text:'', amount:'', currency: draft.currency || 'JPY', category:'吃', payment:'現金', date:'', day:'', note:'', link:'', subgroup: resolvedSubgroup };
   
@@ -1971,8 +2003,11 @@ function updateItem(catId, itemId, key, val){
   const item = trip.categories[catId].items.find(i=>i.id===itemId);
   if(item){
     item[key] = val;
+    if(catId === 'expenses' && key === 'date'){
+      sortExpenseItemsByDate(trip);
+    }
     scheduleSave();
-    if(key === 'currency' || key === 'payment' || key === 'category'){
+    if(key === 'currency' || key === 'payment' || key === 'category' || (catId === 'expenses' && key === 'date')){
       render();
     }
   }
@@ -2244,6 +2279,60 @@ function handleItemDragEnd(e) {
   draggedItemInfo = null;
   const draggingEls = document.querySelectorAll('.dragging-item');
   draggingEls.forEach(el => el.classList.remove('dragging-item'));
+}
+
+/* 手機觸控版拖曳排序：原生 HTML5 拖曳 API 在手機瀏覽器上支援度很差，
+   常常完全沒反應，所以另外用觸控事件（touchstart/touchmove/touchend）
+   實作一套一樣效果的排序邏輯，電腦跟手機各自用各自的方式，互不影響。 */
+let touchDragInfo = null;
+let touchDragCurrentTarget = null;
+
+function handleItemTouchStart(e, catId, itemId){
+  touchDragInfo = { catId, itemId };
+  touchDragCurrentTarget = null;
+  const block = e.target.closest('.item-block');
+  if(block) block.classList.add('dragging-item');
+}
+
+function handleItemTouchMove(e){
+  if(!touchDragInfo) return;
+  e.preventDefault();
+  const touch = e.touches[0];
+  if(!touch) return;
+  const el = document.elementFromPoint(touch.clientX, touch.clientY);
+  const block = el && el.closest ? el.closest('.item-block[data-id]') : null;
+
+  document.querySelectorAll('.item-block.drag-over-target').forEach(b=>b.classList.remove('drag-over-target'));
+
+  if(block && block.dataset.id !== touchDragInfo.itemId){
+    block.classList.add('drag-over-target');
+    touchDragCurrentTarget = block.dataset.id;
+  } else {
+    touchDragCurrentTarget = null;
+  }
+}
+
+function handleItemTouchEnd(e){
+  if(!touchDragInfo) return;
+  document.querySelectorAll('.dragging-item, .drag-over-target').forEach(b=>b.classList.remove('dragging-item','drag-over-target'));
+
+  if(touchDragCurrentTarget){
+    const trip = state.trips.find(t => t.id === state.currentTripId);
+    if(trip){
+      const items = trip.categories[touchDragInfo.catId].items;
+      const sourceIdx = items.findIndex(i => i.id === touchDragInfo.itemId);
+      const targetIdx = items.findIndex(i => i.id === touchDragCurrentTarget);
+      if(sourceIdx > -1 && targetIdx > -1 && sourceIdx !== targetIdx){
+        const [movedItem] = items.splice(sourceIdx, 1);
+        items.splice(targetIdx, 0, movedItem);
+        scheduleSave();
+        render();
+      }
+    }
+  }
+
+  touchDragInfo = null;
+  touchDragCurrentTarget = null;
 }
 
 /* ===================== 畫面渲染 ===================== */
@@ -2679,7 +2768,11 @@ function renderItemBlock(trip, cat, item, idx){
         ${canDrag ? `
           <span class="item-drag-handle" draggable="true"
             ondragstart="handleItemDragStart(event, '${cat.id}', ${idx})"
-            ondragend="handleItemDragEnd(event)" title="拖曳調整順序">⠿</span>
+            ondragend="handleItemDragEnd(event)"
+            ontouchstart="handleItemTouchStart(event, '${cat.id}', '${item.id}')"
+            ontouchmove="handleItemTouchMove(event)"
+            ontouchend="handleItemTouchEnd(event)"
+            title="拖曳調整順序">⠿</span>
         ` : ''}
         ${cat.id==='packing' ? `
           <input type="checkbox" class="batch-checkbox" ${ui.batchSelected.has(item.id)?'checked':''} onchange="toggleBatchSelect('${item.id}', this.checked)" title="勾選以批次移動">
@@ -2924,10 +3017,10 @@ function pickChip(catId, field, value){
 function hideChip(field, value){
   const trip = state.trips.find(t=>t.id===state.currentTripId);
   if(!trip) return;
-  if(!trip.hiddenChips) trip.hiddenChips = { category: [], payment: [], currency: [] };
-  if(!trip.hiddenChips[field]) trip.hiddenChips[field] = [];
-  if(!trip.hiddenChips[field].includes(value)){
-    trip.hiddenChips[field].push(value);
+  if(!trip.categories.hiddenChips) trip.categories.hiddenChips = { category: [], payment: [], currency: [] };
+  if(!trip.categories.hiddenChips[field]) trip.categories.hiddenChips[field] = [];
+  if(!trip.categories.hiddenChips[field].includes(value)){
+    trip.categories.hiddenChips[field].push(value);
   }
   scheduleSave();
   render();
