@@ -260,11 +260,19 @@ input,textarea,select{font-family:inherit;}
 }
 .currency-chips{display:flex;flex-wrap:wrap;gap:5px;padding:0 6px 8px;}
 .currency-chip{
-  background:var(--white);border:1px solid var(--line);color:var(--ink-soft);font-size:11px;
-  padding:3px 10px;border-radius:20px;font-family:var(--mono);
+  display:inline-flex;align-items:stretch;background:var(--white);border:1px solid var(--line);
+  border-radius:20px;overflow:hidden;font-family:var(--mono);
 }
-.currency-chip:hover{border-color:var(--teal);color:var(--teal);}
-.currency-chip.active{background:var(--teal);border-color:var(--teal);color:var(--white);}
+.currency-chip:hover{border-color:var(--teal);}
+.currency-chip.active{background:var(--teal);border-color:var(--teal);}
+.currency-chip.active .chip-pick,.currency-chip.active .chip-remove{color:var(--white);}
+.currency-chip .chip-pick{
+  background:none;border:none;color:var(--ink-soft);font-size:11px;padding:3px 4px 3px 10px;cursor:pointer;
+}
+.currency-chip .chip-remove{
+  background:none;border:none;color:var(--ink-soft);opacity:.55;font-size:12px;padding:3px 8px 3px 3px;cursor:pointer;line-height:1;
+}
+.currency-chip .chip-remove:hover{opacity:1;color:var(--stamp);}
 .stamp-check{
   width:20px;height:20px;border-radius:50%;border:1.5px solid var(--stamp);background:var(--white);
   flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:11px;color:var(--white);
@@ -826,6 +834,19 @@ let currentUser = null;
 let isSyncing = false;
 let realtimeChannel = null;
 let isRemoteUpdating = false;
+let remoteUpdatingWatchdog = null;
+// 設定 isRemoteUpdating 的保險機制：只要設成 true，就會同時安排一個
+// 最多 8 秒後自動解鎖的保險計時器。正常情況下，各個存檔/同步函式
+// 自己就會在完成後把這個旗標解開；這個保險機制是為了防止萬一遇到
+// 沒預期到的例外狀況、旗標卡在 true 沒有被正確解開，導致之後的存檔
+// 一直被誤判成「正在忙」而遲遲存不進去、看起來像是「存檔失敗」。
+function setRemoteUpdating(val){
+  isRemoteUpdating = val;
+  if(remoteUpdatingWatchdog){ clearTimeout(remoteUpdatingWatchdog); remoteUpdatingWatchdog = null; }
+  if(val){
+    remoteUpdatingWatchdog = setTimeout(()=>{ isRemoteUpdating = false; }, 8000);
+  }
+}
 
 /* ===================== 資料設定 ===================== */
 const CATS = [
@@ -900,6 +921,10 @@ function getManualExpenseItems(trip){
   return items;
 }
 
+function getHiddenChips(trip, field){
+  return (trip && trip.hiddenChips && trip.hiddenChips[field]) || [];
+}
+
 function paymentSuggestions(trip){
   const set = new Set();
   if(trip && trip.categories && trip.categories.expenses){
@@ -907,7 +932,8 @@ function paymentSuggestions(trip){
       if(i.payment && i.payment.trim()) set.add(i.payment.trim());
     });
   }
-  return Array.from(set);
+  const hidden = getHiddenChips(trip, 'payment');
+  return Array.from(set).filter(v => !hidden.includes(v));
 }
 function categorySuggestions(trip){
   const set = new Set();
@@ -916,7 +942,8 @@ function categorySuggestions(trip){
       if(i.category && i.category.trim()) set.add(i.category.trim());
     });
   }
-  return Array.from(set);
+  const hidden = getHiddenChips(trip, 'category');
+  return Array.from(set).filter(v => !hidden.includes(v));
 }
 
 function uid(){ return Math.random().toString(36).slice(2,10) + Date.now().toString(36); }
@@ -1129,7 +1156,7 @@ function scheduleSave(){
   // 萬一剛好在這段空窗期間收到即時同步的通知，就會把「還沒送出去的本地變更」
   // （例如剛上傳、還沒存到雲端的照片）用舊資料蓋掉，導致看起來第一次都沒加進去，
   // 要重新加一次才會出現——這就是這次的根本原因。
-  isRemoteUpdating = true;
+  setRemoteUpdating(true);
 
   if(currentUser && state.currentTripId){
     const currentTrip = state.trips.find(t => t.id === state.currentTripId);
@@ -1152,7 +1179,7 @@ function scheduleSave(){
     }
     finally {
       if(!currentUser){
-        isRemoteUpdating = false;
+        setRemoteUpdating(false);
       }
       // 有登入的話，isRemoteUpdating 交給 syncToSupabase() 自己的
       // finally 區塊處理（它會在存檔完成後再多留 500 毫秒緩衝才解鎖）。
@@ -1238,7 +1265,7 @@ async function syncToSupabase(tripsToSave = state.trips) {
   if (!currentUser || !Array.isArray(tripsToSave)) return false;
 
   isSyncing = true;
-  isRemoteUpdating = true;
+  setRemoteUpdating(true);
   if(!isUserBusy()) render();
 
   try {
@@ -1292,7 +1319,7 @@ async function syncToSupabase(tripsToSave = state.trips) {
     return false;
   } finally {
     isSyncing = false;
-    setTimeout(() => { isRemoteUpdating = false; }, 500);
+    setTimeout(() => { setRemoteUpdating(false); }, 500);
     if(!isUserBusy()) render();
   }
 }
@@ -1647,7 +1674,8 @@ function currencySuggestions(trip){
       }
     });
   }
-  return Array.from(set);
+  const hidden = getHiddenChips(trip, 'currency');
+  return Array.from(set).filter(v => !hidden.includes(v));
 }
 
 /* ===================== UI 動作 ===================== */
@@ -2467,21 +2495,9 @@ function renderCategoryCard(trip, cat){
           <input type="text" class="cur" list="currency-list" placeholder="幣別" value="${escapeAttr(draft.currency||'')}" oninput="setDraftProp('${cat.id}', 'currency', this.value)" onkeydown="if(event.key==='Enter') addItem('${cat.id}')">
           <button onclick="addItem('${cat.id}')">+</button>
         </div>
-        ${categorySuggestions(trip).length ? `
-          <div class="currency-chips">
-            ${categorySuggestions(trip).map(c=>`<button type="button" class="currency-chip ${draft.category===c?'active':''}" onclick="pickChip('${cat.id}', 'category', '${escapeJsAttr(c)}')">${escapeHtml(c)}</button>`).join('')}
-          </div>
-        ` : ''}
-        ${paymentSuggestions(trip).length ? `
-          <div class="currency-chips">
-            ${paymentSuggestions(trip).map(p=>`<button type="button" class="currency-chip ${draft.payment===p?'active':''}" onclick="pickChip('${cat.id}', 'payment', '${escapeJsAttr(p)}')">${escapeHtml(p)}</button>`).join('')}
-          </div>
-        ` : ''}
-        ${currencySuggestions(trip).length ? `
-          <div class="currency-chips">
-            ${currencySuggestions(trip).map(c=>`<button type="button" class="currency-chip ${draft.currency===c?'active':''}" onclick="pickChip('${cat.id}', 'currency', '${escapeJsAttr(c)}')">${escapeHtml(c)}</button>`).join('')}
-          </div>
-        ` : ''}
+        ${renderChipRow(cat.id, 'category', categorySuggestions(trip), draft.category)}
+        ${renderChipRow(cat.id, 'payment', paymentSuggestions(trip), draft.payment)}
+        ${renderChipRow(cat.id, 'currency', currencySuggestions(trip), draft.currency)}
       </div>
     `;
   } else if(cat.type === 'itinerary') {
@@ -2519,11 +2535,7 @@ function renderCategoryCard(trip, cat){
         <input type="text" class="cur" list="currency-list" placeholder="幣別" value="${escapeAttr(draft.currency||'')}" oninput="setDraftProp('${cat.id}', 'currency', this.value)">
         <button onclick="addItem('${cat.id}')">+</button>
       </div>
-      ${currencySuggestions(trip).length ? `
-        <div class="currency-chips">
-          ${currencySuggestions(trip).map(c=>`<button type="button" class="currency-chip ${draft.currency===c?'active':''}" onclick="pickChip('${cat.id}', 'currency', '${escapeJsAttr(c)}')">${escapeHtml(c)}</button>`).join('')}
-        </div>
-      ` : ''}
+      ${renderChipRow(cat.id, 'currency', currencySuggestions(trip), draft.currency)}
     `;
   } else {
     addRowHtml = `
@@ -2601,7 +2613,7 @@ function renderCategoryCard(trip, cat){
         </div>
       ` : ''}
 
-      <div class="cat-body">
+      <div class="cat-body" data-cat-id="${cat.id}">
         ${itemsHtml}
       </div>
       ${addRowHtml}
@@ -2854,8 +2866,32 @@ function closeImageModal(){
 }
 
 /* ===================== 輔助函數與更新邏輯 ===================== */
+function renderChipRow(catId, field, values, currentValue){
+  if(!values.length) return '';
+  return `<div class="currency-chips">
+    ${values.map(v => `
+      <span class="currency-chip ${currentValue===v?'active':''}">
+        <button type="button" class="chip-pick" onclick="pickChip('${catId}', '${field}', '${escapeJsAttr(v)}')">${escapeHtml(v)}</button>
+        <button type="button" class="chip-remove" onclick="event.stopPropagation(); hideChip('${field}', '${escapeJsAttr(v)}')" title="不要再顯示這個建議">×</button>
+      </span>
+    `).join('')}
+  </div>`;
+}
+
 function pickChip(catId, field, value){
   setDraftProp(catId, field, value);
+  render();
+}
+
+function hideChip(field, value){
+  const trip = state.trips.find(t=>t.id===state.currentTripId);
+  if(!trip) return;
+  if(!trip.hiddenChips) trip.hiddenChips = { category: [], payment: [], currency: [] };
+  if(!trip.hiddenChips[field]) trip.hiddenChips[field] = [];
+  if(!trip.hiddenChips[field].includes(value)){
+    trip.hiddenChips[field].push(value);
+  }
+  scheduleSave();
   render();
 }
 
@@ -3060,12 +3096,15 @@ function render(){
   const app = document.getElementById('app');
   if(!app) return;
 
-  // 只有在「還是同一頁、同一趟行程」的情況下才需要保留捲動位置——
-  // 這種情況通常是背景自動存檔、同步完成之類的原因觸發重繪，
-  // 使用者人還在同一個地方看資料，不應該被重繪打斷、跳回最上面。
-  // 如果是切換到不同的行程、或切換到列表／詳細頁，代表是使用者自己
-  // 主動導覽到別的地方，這時候跳回最上面才是正常、預期中的行為。
+  // 記住重繪前「整頁」的捲動位置，還有「每一張分類卡片內部」自己的捲動位置
+  // （卡片太長時，卡片本身可以在裡面單獨捲動），重繪之後一起還原，
+  // 不然畫面重新整理會把這些捲動位置都重置到最上面。
   const scrollY = window.scrollY;
+  const cardScrollMap = {};
+  app.querySelectorAll('.cat-body[data-cat-id]').forEach(el=>{
+    cardScrollMap[el.dataset.catId] = el.scrollTop;
+  });
+
   const contextChanged = (lastRenderedView !== null) &&
     (lastRenderedView !== state.view || lastRenderedTripId !== state.currentTripId);
   lastRenderedView = state.view;
@@ -3085,6 +3124,10 @@ function render(){
   } else {
     window.scrollTo(0, scrollY);
     requestAnimationFrame(()=>{ window.scrollTo(0, scrollY); });
+    app.querySelectorAll('.cat-body[data-cat-id]').forEach(el=>{
+      const savedTop = cardScrollMap[el.dataset.catId];
+      if(savedTop != null) el.scrollTop = savedTop;
+    });
   }
 }
 
