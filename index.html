@@ -314,6 +314,8 @@ input,textarea,select{font-family:inherit;}
 .item-more:hover{color:var(--teal);background:rgba(46,106,98,0.08);}
 .item-delete:hover{color:var(--stamp);background:rgba(181,64,46,0.08);}
 .item-detail{padding:2px 4px 10px 30px;display:flex;flex-direction:column;gap:6px;}
+.item-photo-block{width:140px;}
+.item-photo-block .shopping-img-wrap{height:100px;}
 .item-link,.item-note{
   border:1px solid var(--line);background:var(--white);border-radius:7px;padding:6px 9px;font-size:12.5px;color:var(--ink);
   width:100%;
@@ -868,6 +870,8 @@ const CATS = [
 ];
 const EXPENSE_CATS = ['吃','住','交通','購物','娛樂','景點門票','其他'];
 const PREPAID_CATEGORY_IDS = ['flight','stay','visa','taiwanTransport','overseasTransport','bookedItinerary','insurance','sim'];
+// 可以附加照片（例如訂單確認信、電子機票）的分類，跟購物清單用一樣的照片元件。
+const PHOTO_ENABLED_CATEGORY_IDS = ['flight','stay','visa','taiwanTransport','overseasTransport','bookedItinerary'];
 
 function isPrepaidCategoryId(catId){
   return PREPAID_CATEGORY_IDS.includes(catId);
@@ -2690,6 +2694,17 @@ function renderItemBlock(trip, cat, item, idx){
       ` : ''}
       ${isExpanded ? `
         <div class="item-detail">
+          ${PHOTO_ENABLED_CATEGORY_IDS.includes(cat.id) ? `
+            <div class="item-photo-block">
+              <div class="shopping-img-wrap" onclick="triggerImageUpload('${item.id}')">
+                ${item.image
+                  ? `<img src="${escapeAttr(item.image)}" alt="附加照片" onclick="event.stopPropagation(); openImageModal('${escapeJsAttr(item.image)}')">
+                     <button type="button" class="shopping-img-edit-btn" onclick="event.stopPropagation(); triggerImageUpload('${item.id}')" title="更換照片">✎</button>`
+                  : `<div class="shopping-img-placeholder">+ 新增照片<br>（例如訂單確認信）</div>`}
+              </div>
+              <input type="file" id="img-input-${item.id}" class="img-upload-input" accept="image/*" onchange="handleImageUpload('${cat.id}', '${item.id}', event)">
+            </div>
+          ` : ''}
           ${item.link ? `
             <div class="item-link-display">
               <a href="${escapeAttr(normalizeUrl(item.link))}" target="_blank" rel="noopener noreferrer" class="item-link-anchor" title="${escapeAttr(item.link)}">🔗 ${escapeHtml(item.link)}</a>
