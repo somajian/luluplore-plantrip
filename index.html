@@ -63,6 +63,16 @@ input,textarea,select{font-family:inherit;}
 .sync-dot.synced { background: #27ae60; }
 .sync-dot.syncing { background: #f39c12; animation: pulse 1s infinite; }
 @keyframes pulse { 0% { opacity: 0.4; } 50% { opacity: 1; } 100% { opacity: 0.4; } }
+.floating-sync-badge{
+  position:fixed;top:12px;left:50%;transform:translateX(-50%);z-index:200;
+  background:var(--ink);color:var(--white);font-size:12.5px;font-weight:600;
+  padding:8px 16px;border-radius:30px;display:flex;align-items:center;gap:8px;
+  box-shadow:0 6px 18px rgba(27,42,74,0.35);white-space:nowrap;
+}
+.floating-sync-dot{width:8px;height:8px;border-radius:50%;background:#f39c12;flex-shrink:0;animation:pulse 1s infinite;}
+@media (max-width:520px){
+  .floating-sync-badge{font-size:11.5px;padding:7px 12px;top:8px;max-width:92vw;white-space:normal;text-align:center;}
+}
 
 .btn-auth {
   background: var(--white);
@@ -3141,6 +3151,18 @@ function openTrip(id){
 
 function renderModals(){
   let html = '';
+
+  // 固定在畫面上的同步狀態提示：不管捲動到哪裡都看得到，
+  // 只有在真的「同步中」才會出現，同步完成後會自動消失，
+  // 不需要每上傳一張照片就跳出一次警示視窗打斷操作。
+  if(isSyncing && currentUser){
+    html += `
+      <div class="floating-sync-badge">
+        <span class="floating-sync-dot"></span>
+        雲端同步中，請稍等一下再離開…
+      </div>
+    `;
+  }
 
   if(ui.confirm){
     html += `
