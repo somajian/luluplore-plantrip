@@ -1051,14 +1051,48 @@ function autoGrowTextarea(el){
 }
 
 let localCacheFullWarned = false;
-function saveLocalCache(trips){
-  // 不管有沒有登入帳號，都會存一份到本機瀏覽器當作安全網。
-  // 之前曾經因為「已登入就不用本機備份」，結果遇到雲端同步失敗時，
-  // 完全沒有本機備份可以還原，等於資料真的憑空消失——這是更嚴重的風險。
-  // 現在照片上傳時已經會自動壓縮，塞爆本機空間的機率低很多，
-  // 兩邊都存、互相保險比較安全。
+// 把要存進本機備份的資料「精簡化」：拿掉每個項目裡的照片（item.image），
+// 只保留文字資料。因為手機瀏覽器的本機儲存空間天生就只有 5-10MB 左右，
+// 購物清單本來就會累積很多照片，硬塞進這麼小的空間注定會爆滿。
+// 照片完全交給雲端負責保存（雲端資料庫的容量大很多，不會有這個問題），
+// 本機備份只當作「文字資料」的安全網，這樣就不會再被照片塞爆了。
+function stripImagesForLocalCache(trips){
   try{
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(trips));
+    return (trips || []).map(trip => {
+      const newCategories = {};
+      const cats = trip.categories || {};
+      Object.keys(cats).forEach(catId => {
+        const catData = cats[catId];
+        if(catData && Array.isArray(catData.items)){
+          newCategories[catId] = {
+            ...catData,
+            items: catData.items.map(item => {
+              if(item && item.image){
+                const { image, ...rest } = item;
+                return rest;
+              }
+              return item;
+            })
+          };
+        } else {
+          newCategories[catId] = catData;
+        }
+      });
+      return { ...trip, categories: newCategories };
+    });
+  }catch(e){
+    console.warn('精簡本機備份資料時發生錯誤，改用原始資料', e);
+    return trips;
+  }
+}
+
+function saveLocalCache(trips){
+  // 不管有沒有登入帳號，都會存一份「精簡過、不含照片」的資料到本機瀏覽器
+  // 當作文字資料的安全網。照片本身有雲端這個容量足夠大的地方存著，
+  // 不需要、也不應該塞進本機這麼小的空間。
+  try{
+    const lightweight = stripImagesForLocalCache(trips);
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(lightweight));
     localCacheFullWarned = false;
   }catch(e){
     console.warn('本機快取儲存失敗（通常是瀏覽器儲存空間已滿）:', e);
@@ -1066,7 +1100,7 @@ function saveLocalCache(trips){
       localCacheFullWarned = true;
       const userTyping = isUserBusy();
       if(!userTyping){
-        showToast('這台裝置的本機備份空間已滿，暫時無法本機備份（雲端仍會繼續嘗試同步），建議清一下購物清單裡比較大張的照片', true);
+        showToast('這台裝置的本機備份空間已滿，暫時無法本機備份文字資料（雲端仍會繼續嘗試同步，照片也都是存在雲端不受影響）', true);
       }
     }
   }
