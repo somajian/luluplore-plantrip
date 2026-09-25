@@ -1274,6 +1274,14 @@ function subscribeRealtime() {
     });
 }
 
+// 判斷是不是「暫時性的網路問題」造成的失敗（例如切去手機相簿選照片時，
+// 頁面被系統放到背景、連線被中斷，導致這次上傳剛好失敗）。
+// 這種情況資料通常沒有真的遺失，等網路穩定後重試一次就會成功，
+// 不需要跳出嚇人的錯誤訊息讓使用者緊張。
+function isTransientNetworkError(msg){
+  return /load failed|failed to fetch|network|timeout|connection|offline/i.test(msg || '');
+}
+
 async function syncToSupabase(tripsToSave = state.trips) {
   if (!currentUser || !Array.isArray(tripsToSave)) return false;
 
@@ -1312,6 +1320,9 @@ async function syncToSupabase(tripsToSave = state.trips) {
       const upsertMsg = error.message || '';
       if(/jwt.*issued at future|issued at future/i.test(upsertMsg)){
         showToast('雲端同步失敗：你的裝置時間跟伺服器對不上，請到設定裡把日期與時間改成「自動設定」，再登出重新登入一次', true);
+      } else if(isTransientNetworkError(upsertMsg)){
+        console.warn('暫時性網路問題，稍後自動重試（例如切去相簿選照片時連線被中斷）：', upsertMsg);
+        setTimeout(()=>{ scheduleSave(); }, 2000);
       } else {
         showToast('雲端同步失敗：' + upsertMsg, true);
       }
@@ -1326,6 +1337,9 @@ async function syncToSupabase(tripsToSave = state.trips) {
     const errMsg = (err && err.message) || '';
     if(/jwt.*issued at future|issued at future/i.test(errMsg)){
       showToast('雲端同步失敗：你的裝置時間跟伺服器對不上，請到設定裡把日期與時間改成「自動設定」，再登出重新登入一次', true);
+    } else if(isTransientNetworkError(errMsg) || isTransientNetworkError(String(err))){
+      console.warn('暫時性網路問題，稍後自動重試（例如切去相簿選照片時連線被中斷）：', errMsg || err);
+      setTimeout(()=>{ scheduleSave(); }, 2000);
     } else {
       showToast('雲端同步失敗，請稍後再試', true);
     }
@@ -1485,6 +1499,8 @@ async function syncFromSupabase(isRealtimeTrigger = false) {
     const msg = (e && e.message) || '';
     if(/jwt.*issued at future|issued at future/i.test(msg)){
       showToast('雲端連線失敗：你的裝置時間跟伺服器對不上，請到設定裡把日期與時間改成「自動設定」，再登出重新登入一次', true);
+    } else if(isTransientNetworkError(msg) || isTransientNetworkError(String(e))){
+      console.warn('暫時性網路問題，先安靜略過（例如切去相簿選照片時連線被中斷）：', msg || e);
     } else {
       showToast('無法讀取雲端資料：' + (msg || '未知錯誤'), true);
     }
