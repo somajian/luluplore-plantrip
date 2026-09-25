@@ -1052,10 +1052,11 @@ function autoGrowTextarea(el){
 
 let localCacheFullWarned = false;
 function saveLocalCache(trips){
-  // 已經登入帳號的話，資料完全交給雲端負責，不需要另外佔用手機的
-  // 本機儲存空間、也不會再有「本機空間爆滿」這種問題。
-  // 只有「訪客模式（沒有登入）」才需要靠本機儲存，因為訪客沒有雲端帳號可以存。
-  if(currentUser) return;
+  // 不管有沒有登入帳號，都會存一份到本機瀏覽器當作安全網。
+  // 之前曾經因為「已登入就不用本機備份」，結果遇到雲端同步失敗時，
+  // 完全沒有本機備份可以還原，等於資料真的憑空消失——這是更嚴重的風險。
+  // 現在照片上傳時已經會自動壓縮，塞爆本機空間的機率低很多，
+  // 兩邊都存、互相保險比較安全。
   try{
     localStorage.setItem(STORAGE_KEY, JSON.stringify(trips));
     localCacheFullWarned = false;
@@ -1065,7 +1066,7 @@ function saveLocalCache(trips){
       localCacheFullWarned = true;
       const userTyping = isUserBusy();
       if(!userTyping){
-        showToast('這台裝置的本機儲存空間已滿，訪客模式暫時無法備份，建議登入帳號改用雲端同步', true);
+        showToast('這台裝置的本機備份空間已滿，暫時無法本機備份（雲端仍會繼續嘗試同步），建議清一下購物清單裡比較大張的照片', true);
       }
     }
   }
@@ -1282,6 +1283,22 @@ function isTransientNetworkError(msg){
   return /load failed|failed to fetch|network|timeout|connection|offline/i.test(msg || '');
 }
 
+// 安靜重試最多幾次；如果超過這個次數還是一直失敗，代表很可能不是真的
+// 「暫時性」網路問題（例如背景一下下、訊號閃一下），而是持續性的問題
+// （例如資料太大、網路真的斷線很久），這種情況必須明確警告使用者，
+// 不能再繼續安靜重試下去，不然使用者完全不會知道資料其實一直沒存上雲端。
+let quietRetryCount = 0;
+const MAX_QUIET_RETRY = 3;
+function scheduleQuietRetry(){
+  quietRetryCount++;
+  if(quietRetryCount > MAX_QUIET_RETRY){
+    quietRetryCount = 0;
+    showToast('雲端同步持續失敗，你的變更可能還沒有存到雲端！建議檢查網路連線，並立即用「匯出 JSON 備份」保存一份資料以防萬一', true);
+    return;
+  }
+  setTimeout(()=>{ scheduleSave(); }, 2000 * quietRetryCount);
+}
+
 async function syncToSupabase(tripsToSave = state.trips) {
   if (!currentUser || !Array.isArray(tripsToSave)) return false;
 
@@ -1322,7 +1339,7 @@ async function syncToSupabase(tripsToSave = state.trips) {
         showToast('雲端同步失敗：你的裝置時間跟伺服器對不上，請到設定裡把日期與時間改成「自動設定」，再登出重新登入一次', true);
       } else if(isTransientNetworkError(upsertMsg)){
         console.warn('暫時性網路問題，稍後自動重試（例如切去相簿選照片時連線被中斷）：', upsertMsg);
-        setTimeout(()=>{ scheduleSave(); }, 2000);
+        scheduleQuietRetry();
       } else {
         showToast('雲端同步失敗：' + upsertMsg, true);
       }
@@ -1330,6 +1347,7 @@ async function syncToSupabase(tripsToSave = state.trips) {
     }
 
     saveLocalCache(state.trips);
+    quietRetryCount = 0;
     return true;
 
   } catch (err) {
@@ -1339,7 +1357,7 @@ async function syncToSupabase(tripsToSave = state.trips) {
       showToast('雲端同步失敗：你的裝置時間跟伺服器對不上，請到設定裡把日期與時間改成「自動設定」，再登出重新登入一次', true);
     } else if(isTransientNetworkError(errMsg) || isTransientNetworkError(String(err))){
       console.warn('暫時性網路問題，稍後自動重試（例如切去相簿選照片時連線被中斷）：', errMsg || err);
-      setTimeout(()=>{ scheduleSave(); }, 2000);
+      scheduleQuietRetry();
     } else {
       showToast('雲端同步失敗，請稍後再試', true);
     }
@@ -3295,6 +3313,22 @@ function render(){
     });
   }
 }
+
+/* 頁面重新變成可見時（例如切換分頁回來、從背景切回、手機切完相簿回來），
+   先強制跟雲端拿一次最新資料，再讓使用者繼續編輯。
+   這是為了避免「某個分頁/裝置閒置很久沒關，資料其實已經過時，
+   結果使用者回來隨手一改，就把其他裝置這段時間做的變更整個蓋掉」
+   這種多裝置編輯時特別容易發生的問題。 */
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible' && currentUser && !isUserBusy()) {
+    syncFromSupabase(false);
+  }
+});
+window.addEventListener('focus', () => {
+  if (currentUser && !isUserBusy()) {
+    syncFromSupabase(false);
+  }
+});
 
 /* 程式進入點 */
 document.addEventListener('DOMContentLoaded', () => {
