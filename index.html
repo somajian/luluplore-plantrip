@@ -1105,12 +1105,14 @@ function stripImagesForLocalCache(trips){
 }
 
 function saveLocalCache(trips){
-  // 不管有沒有登入帳號，都會存一份「精簡過、不含照片」的資料到本機瀏覽器
-  // 當作文字資料的安全網。照片本身有雲端這個容量足夠大的地方存著，
-  // 不需要、也不應該塞進本機這麼小的空間。
+  // 有登入帳號的話，照片交給雲端保存，本機備份濾掉照片、只留文字，
+  // 避免本機空間被大量照片塞爆。
+  // 但訪客模式（沒有登入）沒有雲端可以依靠，本機備份是唯一能保存
+  // 資料的地方——這種情況絕對不能把照片濾掉，不然照片會直接消失、
+  // 重新整理就不見，比空間爆滿還嚴重。
   try{
-    const lightweight = stripImagesForLocalCache(trips);
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(lightweight));
+    const dataToSave = currentUser ? stripImagesForLocalCache(trips) : trips;
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(dataToSave));
     localCacheFullWarned = false;
   }catch(e){
     console.warn('本機快取儲存失敗（通常是瀏覽器儲存空間已滿）:', e);
@@ -1118,7 +1120,11 @@ function saveLocalCache(trips){
       localCacheFullWarned = true;
       const userTyping = isUserBusy();
       if(!userTyping){
-        showToast('這台裝置的本機備份空間已滿，暫時無法本機備份文字資料（雲端仍會繼續嘗試同步，照片也都是存在雲端不受影響）', true);
+        if(currentUser){
+          showToast('這台裝置的本機備份空間已滿，暫時無法本機備份文字資料（雲端仍會繼續嘗試同步，照片也都是存在雲端不受影響）', true);
+        } else {
+          showToast('這台裝置的本機儲存空間已滿，訪客模式的照片可能無法保存，建議登入帳號改用雲端同步、或清一下比較大張的照片', true);
+        }
       }
     }
   }
@@ -3140,62 +3146,27 @@ function processImageUpload(catId, itemId, file){
           compressed = e.target.result;
         }
 
-        if(currentUser){
+        // 直接把壓縮後的照片存進項目資料裡（跟以前一樣快的做法），
+        // 只送「這一趟行程」、也不用等一般存檔用的 0.6 秒防抖動延遲，
+        // 讓速度盡量接近「壓縮 + 一次存檔」這樣單純的過程。
+        const uploadTrip = state.trips.find(t => t.id === state.currentTripId);
+        const uploadItem = uploadTrip && uploadTrip.categories[catId] && uploadTrip.categories[catId].items.find(i => i.id === itemId);
+        if(uploadItem){ uploadItem.image = compressed; }
+
+        if(uploadTrip && currentUser){
           uploadingImageIds.add(itemId);
-          render();
-
-          // 上傳到雲端檔案空間，只試一次；真的失敗才退回舊方式。
-          // 不要再疊加人工延遲重試，那只會讓正常情況也一起變慢。
-          let uploadedUrl = null;
-          let uploadErr = null;
-          try{
-            const blob = await (await fetch(compressed)).blob();
-            const filePath = `${currentUser.id}/${itemId}-${Date.now()}.jpg`;
-            const { error } = await supabaseClient.storage
-              .from('trip-photos')
-              .upload(filePath, blob, { contentType: 'image/jpeg', upsert: true });
-            if(error) throw error;
-            const { data: urlData } = supabaseClient.storage
-              .from('trip-photos')
-              .getPublicUrl(filePath);
-            uploadedUrl = urlData.publicUrl;
-          }catch(err){
-            uploadErr = err;
-          }
-
-          if(uploadedUrl){
-            const uploadTrip = state.trips.find(t => t.id === state.currentTripId);
-            const uploadItem = uploadTrip && uploadTrip.categories[catId] && uploadTrip.categories[catId].items.find(i => i.id === itemId);
-            if(uploadItem){ uploadItem.image = uploadedUrl; }
-            uploadingImageIds.delete(itemId);
-            render();
-
-            // 照片本身最耗時的「上傳到雲端檔案空間」步驟已經做完了，
-            // 這裡直接存檔（只送這一趟行程，不是全部行程），
-            // 不用再等一般存檔用的 0.6 秒防抖動延遲。存檔本身失敗
-            // 的話，syncToSupabase 內建的錯誤處理／安靜重試機制
-            // 就會處理，這裡不需要再疊一層驗證或重試，
-            // 那只會讓每張照片都變得很慢。
-            if(uploadTrip){
-              uploadTrip.updated_at = new Date().toISOString();
-              saveLocalCache(state.trips);
-              await saveToSupabase([uploadTrip]);
-            }
-          }else{
-            console.error('照片上傳到雲端檔案空間失敗:', uploadErr);
-            // 上傳失敗才退回舊方式（直接存照片內容），至少不會讓
-            // 照片完全加不進去。
-            updateItem(catId, itemId, 'image', compressed);
-            uploadingImageIds.delete(itemId);
-            render();
-            showToast('照片雲端上傳失敗，已先暫時用舊方式存起來：' + ((uploadErr && uploadErr.message) || '未知錯誤'), true);
-          }
-        } else {
-          // 訪客模式沒有雲端帳號，沒有雲端檔案空間可以用，維持原本
-          // 直接把照片內容存進行程資料的方式。
-          updateItem(catId, itemId, 'image', compressed);
-          render();
         }
+        render();
+
+        if(uploadTrip){
+          uploadTrip.updated_at = new Date().toISOString();
+          saveLocalCache(state.trips);
+          if(currentUser){
+            await saveToSupabase([uploadTrip]);
+          }
+        }
+        uploadingImageIds.delete(itemId);
+        render();
         resolveOuter();
       };
       img.onerror = function(){
