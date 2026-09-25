@@ -1121,6 +1121,8 @@ function saveLocalCache(trips){
 // 2. 正在選取一段文字（例如長按準備複製），就算那段文字不在輸入框裡也算
 // 只要符合其中一種，這次的自動重繪就先跳過，避免打斷使用者正在做的事。
 let isPickingImage = false;
+// 記錄目前正在上傳到雲端檔案空間的項目 id，讓畫面上可以顯示「上傳中」提示。
+let uploadingImageIds = new Set();
 function isUserBusy(){
   if(isPickingImage) return true;
   const activeTag = document.activeElement && document.activeElement.tagName;
@@ -2907,10 +2909,12 @@ function renderItemBlock(trip, cat, item, idx){
           ${PHOTO_ENABLED_CATEGORY_IDS.includes(cat.id) ? `
             <div class="item-photo-block">
               <div class="shopping-img-wrap" onclick="triggerImageUpload('${item.id}')">
-                ${item.image
-                  ? `<img src="${escapeAttr(item.image)}" alt="附加照片" onclick="event.stopPropagation(); openImageModal('${escapeJsAttr(item.image)}')">
-                     <button type="button" class="shopping-img-edit-btn" onclick="event.stopPropagation(); triggerImageUpload('${item.id}')" title="更換照片">✎</button>`
-                  : `<div class="shopping-img-placeholder">+ 新增照片<br>（例如訂單確認信）</div>`}
+                ${uploadingImageIds.has(item.id)
+                  ? `<div class="shopping-img-placeholder">⬆️ 上傳中…</div>`
+                  : (item.image
+                    ? `<img src="${escapeAttr(item.image)}" alt="附加照片" onclick="event.stopPropagation(); openImageModal('${escapeJsAttr(item.image)}')">
+                       <button type="button" class="shopping-img-edit-btn" onclick="event.stopPropagation(); triggerImageUpload('${item.id}')" title="更換照片">✎</button>`
+                    : `<div class="shopping-img-placeholder">+ 新增照片<br>（例如訂單確認信）</div>`)}
               </div>
               <input type="file" id="img-input-${item.id}" class="img-upload-input" accept="image/*" onchange="handleImageUpload('${cat.id}', '${item.id}', event)">
             </div>
@@ -2935,10 +2939,12 @@ function renderShoppingCard(trip, cat, item) {
   return `
     <div class="shopping-card ${isDone ? 'done' : ''}">
       <div class="shopping-img-wrap" onclick="triggerImageUpload('${item.id}')">
-        ${item.image
-          ? `<img src="${escapeAttr(item.image)}" alt="商品照片" onclick="event.stopPropagation(); openImageModal('${escapeJsAttr(item.image)}')">
-             <button type="button" class="shopping-img-edit-btn" onclick="event.stopPropagation(); triggerImageUpload('${item.id}')" title="更換照片">✎</button>`
-          : `<div class="shopping-img-placeholder">+ 新增照片</div>`}
+        ${uploadingImageIds.has(item.id)
+          ? `<div class="shopping-img-placeholder">⬆️ 上傳中…</div>`
+          : (item.image
+            ? `<img src="${escapeAttr(item.image)}" alt="商品照片" onclick="event.stopPropagation(); openImageModal('${escapeJsAttr(item.image)}')">
+               <button type="button" class="shopping-img-edit-btn" onclick="event.stopPropagation(); triggerImageUpload('${item.id}')" title="更換照片">✎</button>`
+            : `<div class="shopping-img-placeholder">+ 新增照片</div>`)}
       </div>
       <input type="file" id="img-input-${item.id}" class="img-upload-input" accept="image/*" onchange="handleImageUpload('${cat.id}', '${item.id}', event)">
       <div style="display:flex;align-items:center;gap:4px;">
@@ -3045,10 +3051,11 @@ function handleImageUpload(catId, itemId, event){
   const reader = new FileReader();
   reader.onload = function(e){
     const img = new Image();
-    img.onload = function(){
+    img.onload = async function(){
       // 把照片縮小到最長邊不超過 900px、重新用較低品質存成 JPEG，
-      // 手機直接拍的照片原始檔常常有好幾 MB，存太多張很容易把瀏覽器的
-      // 本機儲存空間塞滿；壓縮過後通常只有幾十到一百多 KB，安全很多。
+      // 手機直接拍的照片原始檔常常有好幾 MB，壓縮過後通常只有幾十到
+      // 一百多 KB，之後不管是要上傳到雲端檔案空間、還是訪客模式要
+      // 直接存照片內容，都會安全很多。
       const maxDim = 900;
       let w = img.width, h = img.height;
       if(w > maxDim || h > maxDim){
@@ -3066,8 +3073,45 @@ function handleImageUpload(catId, itemId, event){
       }catch(err){
         compressed = e.target.result;
       }
-      updateItem(catId, itemId, 'image', compressed);
-      render();
+
+      if(currentUser){
+        // 已登入：把壓縮後的照片上傳到雲端「檔案儲存空間」（不是存進
+        // 行程資料本身），行程資料裡只會記一個網址連結。這樣不管這趟
+        // 行程總共存了幾張照片，之後每次存檔（哪怕只是改個打勾狀態）
+        // 要傳的資料量都不會被照片拖累，會一直維持很小、很快。
+        uploadingImageIds.add(itemId);
+        render();
+        try{
+          const blob = await (await fetch(compressed)).blob();
+          const filePath = `${currentUser.id}/${itemId}-${Date.now()}.jpg`;
+          const { error: uploadError } = await supabaseClient.storage
+            .from('trip-photos')
+            .upload(filePath, blob, { contentType: 'image/jpeg', upsert: true });
+          if(uploadError) throw uploadError;
+
+          const { data: urlData } = supabaseClient.storage
+            .from('trip-photos')
+            .getPublicUrl(filePath);
+
+          updateItem(catId, itemId, 'image', urlData.publicUrl);
+          uploadingImageIds.delete(itemId);
+          render();
+        }catch(uploadErr){
+          console.error('照片上傳到雲端檔案空間失敗:', uploadErr);
+          // 上傳失敗的話，先退回舊方式（直接存照片內容），至少不會讓
+          // 照片完全加不進去；等雲端檔案空間設定好、網路恢復正常後，
+          // 之後上傳的新照片就會改用網址方式，不會再拖慢存檔速度。
+          updateItem(catId, itemId, 'image', compressed);
+          uploadingImageIds.delete(itemId);
+          render();
+          showToast('照片雲端上傳失敗，已先暫時用舊方式存起來：' + (uploadErr.message || '未知錯誤'), true);
+        }
+      } else {
+        // 訪客模式沒有雲端帳號，沒有雲端檔案空間可以用，維持原本
+        // 直接把照片內容存進行程資料的方式。
+        updateItem(catId, itemId, 'image', compressed);
+        render();
+      }
     };
     img.onerror = function(){
       showToast('這張照片讀取失敗，請換一張試試看', true);
