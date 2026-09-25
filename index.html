@@ -1332,7 +1332,7 @@ function isTransientNetworkError(msg){
 // （例如資料太大、網路真的斷線很久），這種情況必須明確警告使用者，
 // 不能再繼續安靜重試下去，不然使用者完全不會知道資料其實一直沒存上雲端。
 let quietRetryCount = 0;
-const MAX_QUIET_RETRY = 3;
+const MAX_QUIET_RETRY = 6;
 function scheduleQuietRetry(){
   quietRetryCount++;
   if(quietRetryCount > MAX_QUIET_RETRY){
@@ -1340,7 +1340,10 @@ function scheduleQuietRetry(){
     showToast('雲端同步持續失敗，你的變更可能還沒有存到雲端！建議檢查網路連線，並立即用「匯出 JSON 備份」保存一份資料以防萬一', true);
     return;
   }
-  setTimeout(()=>{ scheduleSave(); }, 2000 * quietRetryCount);
+  // 等待時間隨重試次數拉長（3, 6, 9, 12, 15, 18 秒），
+  // 給資料量比較大的情況（例如一口氣上傳很多張照片）更多耐心，
+  // 不要太快就放棄、跳出警告嚇到使用者。
+  setTimeout(()=>{ scheduleSave(); }, 3000 * quietRetryCount);
 }
 
 async function syncToSupabase(tripsToSave = state.trips) {
