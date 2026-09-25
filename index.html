@@ -845,7 +845,15 @@ const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
 const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 let currentUser = null;
-let isSyncing = false;
+let syncingCount = 0;
+function beginSyncing(){ syncingCount++; }
+function endSyncing(){ syncingCount = Math.max(0, syncingCount - 1); }
+// 保留 isSyncing 這個名稱給畫面渲染的地方讀取用，實際上是看計數器
+// 是不是大於 0（同時有好幾個同步動作在跑，也只有全部結束才算完成）。
+Object.defineProperty(globalThis, 'isSyncing', {
+  get(){ return syncingCount > 0; },
+  configurable: true
+});
 let realtimeChannel = null;
 let isRemoteUpdating = false;
 let remoteUpdatingWatchdog = null;
@@ -1280,7 +1288,7 @@ async function signOut() {
   }
 
   currentUser = null;
-  isSyncing = false;
+  endSyncing();
 
   // 登出後把這台裝置上的資料快取也一併清掉，避免帳號的行程資料
   // 繼續留在裝置上（例如公用電腦、借用他人手機的情況）。
@@ -1356,7 +1364,7 @@ function scheduleQuietRetry(){
 async function syncToSupabase(tripsToSave = state.trips) {
   if (!currentUser || !Array.isArray(tripsToSave)) return false;
 
-  isSyncing = true;
+  beginSyncing();
   setRemoteUpdating(true);
   if(!isUserBusy()) render();
 
@@ -1417,7 +1425,7 @@ async function syncToSupabase(tripsToSave = state.trips) {
     }
     return false;
   } finally {
-    isSyncing = false;
+    endSyncing();
     setTimeout(() => { setRemoteUpdating(false); }, 500);
     if(!isUserBusy()) render();
   }
@@ -1431,7 +1439,7 @@ async function syncFromSupabase(isRealtimeTrigger = false) {
   if (!currentUser) return;
 
   if (!isRealtimeTrigger) {
-    isSyncing = true;
+    beginSyncing();
     if(!isUserBusy()) render();
   }
 
@@ -1614,7 +1622,7 @@ async function syncFromSupabase(isRealtimeTrigger = false) {
       showToast('無法讀取雲端資料：' + (msg || '未知錯誤'), true);
     }
   } finally {
-    isSyncing = false;
+    endSyncing();
     // 如果這次是「即時同步」自動觸發的（不是使用者手動操作），
     // 而且使用者當下正在某個欄位輸入中，就先不要重繪畫面——
     // 不然畫面重繪會把正在輸入的欄位整個換掉，手機的鍵盤會因此收起來。
@@ -3088,24 +3096,6 @@ function triggerImageUpload(itemId){
 // 存檔後的驗證：直接跟雲端資料庫確認，剛剛存的這張照片網址，
 // 是不是真的已經在雲端的 categories 資料裡了，而不是只看存檔動作
 // 本身有沒有報錯就直接相信它成功了。
-async function verifyImageSaved(tripId, catId, itemId, expectedUrl){
-  try{
-    const { data, error } = await supabaseClient
-      .from('trips')
-      .select('categories')
-      .eq('id', tripId)
-      .single();
-    if(error || !data) return false;
-    const cats = data.categories || {};
-    const items = (cats[catId] && cats[catId].items) || [];
-    const item = items.find(i => i.id === itemId);
-    return !!(item && item.image === expectedUrl);
-  }catch(e){
-    console.warn('驗證存檔結果時發生錯誤:', e);
-    return false;
-  }
-}
-
 // 照片上傳排隊機制：如果使用者連續新增好幾張照片，強制排成一列、
 // 一次只處理一張，不會讓好幾個上傳動作同時搶著跑，避免互相衝突
 // （之前同時上傳兩張照片時，偶爾會跳出「已先用舊方式存起來」的
@@ -3154,30 +3144,23 @@ function processImageUpload(catId, itemId, file){
           uploadingImageIds.add(itemId);
           render();
 
-          // 上傳到雲端檔案空間，如果失敗先安靜重試最多 2 次，
-          // 不要一失敗就馬上跳警示嚇到使用者——大部分失敗都只是
-          // 一時的網路小狀況，重試一下通常就會成功。
+          // 上傳到雲端檔案空間，只試一次；真的失敗才退回舊方式。
+          // 不要再疊加人工延遲重試，那只會讓正常情況也一起變慢。
           let uploadedUrl = null;
-          let lastUploadErr = null;
-          for(let attempt = 1; attempt <= 3 && !uploadedUrl; attempt++){
-            try{
-              const blob = await (await fetch(compressed)).blob();
-              const filePath = `${currentUser.id}/${itemId}-${Date.now()}-${attempt}.jpg`;
-              const { error: uploadError } = await supabaseClient.storage
-                .from('trip-photos')
-                .upload(filePath, blob, { contentType: 'image/jpeg', upsert: true });
-              if(uploadError) throw uploadError;
-
-              const { data: urlData } = supabaseClient.storage
-                .from('trip-photos')
-                .getPublicUrl(filePath);
-              uploadedUrl = urlData.publicUrl;
-            }catch(err){
-              lastUploadErr = err;
-              if(attempt < 3){
-                await new Promise(r => setTimeout(r, 800 * attempt));
-              }
-            }
+          let uploadErr = null;
+          try{
+            const blob = await (await fetch(compressed)).blob();
+            const filePath = `${currentUser.id}/${itemId}-${Date.now()}.jpg`;
+            const { error } = await supabaseClient.storage
+              .from('trip-photos')
+              .upload(filePath, blob, { contentType: 'image/jpeg', upsert: true });
+            if(error) throw error;
+            const { data: urlData } = supabaseClient.storage
+              .from('trip-photos')
+              .getPublicUrl(filePath);
+            uploadedUrl = urlData.publicUrl;
+          }catch(err){
+            uploadErr = err;
           }
 
           if(uploadedUrl){
@@ -3188,39 +3171,24 @@ function processImageUpload(catId, itemId, file){
             render();
 
             // 照片本身最耗時的「上傳到雲端檔案空間」步驟已經做完了，
-            // 這裡直接立即存檔，不要再走一般存檔用的 0.6 秒防抖動延遲。
-            // 這裡只送「這一趟行程」，不要把使用者所有的行程都打包
-            // 一起送出去——如果有好幾趟行程，資料包會變得很大，
-            // 增加失敗或逾時的機率，也會拖慢速度。
+            // 這裡直接存檔（只送這一趟行程，不是全部行程），
+            // 不用再等一般存檔用的 0.6 秒防抖動延遲。存檔本身失敗
+            // 的話，syncToSupabase 內建的錯誤處理／安靜重試機制
+            // 就會處理，這裡不需要再疊一層驗證或重試，
+            // 那只會讓每張照片都變得很慢。
             if(uploadTrip){
               uploadTrip.updated_at = new Date().toISOString();
               saveLocalCache(state.trips);
-              const saveOk = await saveToSupabase([uploadTrip]);
-
-              // 存完之後不是就這樣算了，立刻回頭跟雲端確認一次：
-              // 剛剛存的這張照片網址，是不是真的有進到雲端資料庫裡。
-              // 之前的寫法只要「存檔動作本身沒有報錯」就當作成功，
-              // 但這樣沒辦法保證資料真的落地——這次改成明確驗證過
-              // 才算數，沒驗證到就再存一次。
-              const verified = saveOk && await verifyImageSaved(uploadTrip.id, catId, itemId, uploadedUrl);
-              if(!verified){
-                console.warn('存檔後驗證失敗，再重新存一次這趟行程的資料');
-                await new Promise(r => setTimeout(r, 1000));
-                await saveToSupabase([uploadTrip]);
-                const verifiedRetry = await verifyImageSaved(uploadTrip.id, catId, itemId, uploadedUrl);
-                if(!verifiedRetry){
-                  showToast('這張照片的存檔沒辦法確認是否成功，建議重新整理頁面確認一次', true);
-                }
-              }
+              await saveToSupabase([uploadTrip]);
             }
           }else{
-            console.error('照片上傳到雲端檔案空間失敗（已重試 3 次）:', lastUploadErr);
-            // 重試 3 次都失敗，才退回舊方式（直接存照片內容），
-            // 至少不會讓照片完全加不進去。
+            console.error('照片上傳到雲端檔案空間失敗:', uploadErr);
+            // 上傳失敗才退回舊方式（直接存照片內容），至少不會讓
+            // 照片完全加不進去。
             updateItem(catId, itemId, 'image', compressed);
             uploadingImageIds.delete(itemId);
             render();
-            showToast('照片雲端上傳失敗，已先暫時用舊方式存起來：' + ((lastUploadErr && lastUploadErr.message) || '未知錯誤'), true);
+            showToast('照片雲端上傳失敗，已先暫時用舊方式存起來：' + ((uploadErr && uploadErr.message) || '未知錯誤'), true);
           }
         } else {
           // 訪客模式沒有雲端帳號，沒有雲端檔案空間可以用，維持原本
