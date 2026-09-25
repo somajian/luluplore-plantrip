@@ -1465,8 +1465,11 @@ async function syncFromSupabase(isRealtimeTrigger = false) {
     if (finalUserTrips.length === 0 && !isRealtimeTrigger) {
       const hadTripsBeforeThisSync = (state.trips || []).length > 0;
 
-      for (let attempt = 1; attempt <= 2 && finalUserTrips.length === 0; attempt++) {
-        await new Promise(resolve => setTimeout(resolve, 900 * attempt));
+      // 重試次數跟等待時間加大：1、2、3、4 秒，最多重試 4 次（總共約
+      // 10 秒），因為之前設定的重試次數還是不夠長，登入權杖的同步
+      // 延遲有時候會超過原本預留的時間。
+      for (let attempt = 1; attempt <= 4 && finalUserTrips.length === 0; attempt++) {
+        await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
         const { data: retryTrips, error: retryErr } = await supabaseClient
           .from('trips')
           .select('*')
@@ -3082,97 +3085,125 @@ function triggerImageUpload(itemId){
   }
 }
 
+// 照片上傳排隊機制：如果使用者連續新增好幾張照片，強制排成一列、
+// 一次只處理一張，不會讓好幾個上傳動作同時搶著跑，避免互相衝突
+// （之前同時上傳兩張照片時，偶爾會跳出「已先用舊方式存起來」的
+// 警示，就是這個原因造成的）。
+let imageUploadQueue = Promise.resolve();
+
 function handleImageUpload(catId, itemId, event){
   isPickingImage = false;
   const file = event.target.files[0];
   if(!file) return;
 
-  const reader = new FileReader();
-  reader.onload = function(e){
-    const img = new Image();
-    img.onload = async function(){
-      // 把照片縮小到最長邊不超過 900px、重新用較低品質存成 JPEG，
-      // 手機直接拍的照片原始檔常常有好幾 MB，壓縮過後通常只有幾十到
-      // 一百多 KB，之後不管是要上傳到雲端檔案空間、還是訪客模式要
-      // 直接存照片內容，都會安全很多。
-      const maxDim = 900;
-      let w = img.width, h = img.height;
-      if(w > maxDim || h > maxDim){
-        if(w >= h){ h = Math.round(h * maxDim / w); w = maxDim; }
-        else { w = Math.round(w * maxDim / h); h = maxDim; }
-      }
-      const canvas = document.createElement('canvas');
-      canvas.width = w;
-      canvas.height = h;
-      const ctx = canvas.getContext('2d');
-      ctx.drawImage(img, 0, 0, w, h);
-      let compressed;
-      try{
-        compressed = canvas.toDataURL('image/jpeg', 0.72);
-      }catch(err){
-        compressed = e.target.result;
-      }
+  imageUploadQueue = imageUploadQueue
+    .then(() => processImageUpload(catId, itemId, file))
+    .catch(err => console.error('照片排隊處理時發生未預期錯誤:', err));
+}
 
-      if(currentUser){
-        // 已登入：把壓縮後的照片上傳到雲端「檔案儲存空間」（不是存進
-        // 行程資料本身），行程資料裡只會記一個網址連結。這樣不管這趟
-        // 行程總共存了幾張照片，之後每次存檔（哪怕只是改個打勾狀態）
-        // 要傳的資料量都不會被照片拖累，會一直維持很小、很快。
-        uploadingImageIds.add(itemId);
-        render();
-        try{
-          const blob = await (await fetch(compressed)).blob();
-          const filePath = `${currentUser.id}/${itemId}-${Date.now()}.jpg`;
-          const { error: uploadError } = await supabaseClient.storage
-            .from('trip-photos')
-            .upload(filePath, blob, { contentType: 'image/jpeg', upsert: true });
-          if(uploadError) throw uploadError;
-
-          const { data: urlData } = supabaseClient.storage
-            .from('trip-photos')
-            .getPublicUrl(filePath);
-
-          const uploadTrip = state.trips.find(t => t.id === state.currentTripId);
-          const uploadItem = uploadTrip && uploadTrip.categories[catId] && uploadTrip.categories[catId].items.find(i => i.id === itemId);
-          if(uploadItem){ uploadItem.image = urlData.publicUrl; }
-          uploadingImageIds.delete(itemId);
-          render();
-
-          // 照片本身最耗時的「上傳到雲端檔案空間」步驟已經做完了，
-          // 這裡直接立即存檔，不要再走一般存檔用的 0.6 秒防抖動延遲
-          // ——那個延遲原本是設計給「連續打字」用的，照片上傳不需要，
-          // 只會白白拉長「還在同步中」的總時間。
-          if(uploadTrip){
-            uploadTrip.updated_at = new Date().toISOString();
-            saveLocalCache(state.trips);
-            await saveToSupabase();
-          }
-        }catch(uploadErr){
-          console.error('照片上傳到雲端檔案空間失敗:', uploadErr);
-          // 上傳失敗的話，先退回舊方式（直接存照片內容），至少不會讓
-          // 照片完全加不進去；等雲端檔案空間設定好、網路恢復正常後，
-          // 之後上傳的新照片就會改用網址方式，不會再拖慢存檔速度。
-          updateItem(catId, itemId, 'image', compressed);
-          uploadingImageIds.delete(itemId);
-          render();
-          showToast('照片雲端上傳失敗，已先暫時用舊方式存起來：' + (uploadErr.message || '未知錯誤'), true);
+function processImageUpload(catId, itemId, file){
+  return new Promise((resolveOuter) => {
+    const reader = new FileReader();
+    reader.onload = function(e){
+      const img = new Image();
+      img.onload = async function(){
+        // 把照片縮小到最長邊不超過 900px、重新用較低品質存成 JPEG，
+        // 手機直接拍的照片原始檔常常有好幾 MB，壓縮過後通常只有幾十到
+        // 一百多 KB，之後不管是要上傳到雲端檔案空間、還是訪客模式要
+        // 直接存照片內容，都會安全很多。
+        const maxDim = 900;
+        let w = img.width, h = img.height;
+        if(w > maxDim || h > maxDim){
+          if(w >= h){ h = Math.round(h * maxDim / w); w = maxDim; }
+          else { w = Math.round(w * maxDim / h); h = maxDim; }
         }
-      } else {
-        // 訪客模式沒有雲端帳號，沒有雲端檔案空間可以用，維持原本
-        // 直接把照片內容存進行程資料的方式。
-        updateItem(catId, itemId, 'image', compressed);
-        render();
-      }
+        const canvas = document.createElement('canvas');
+        canvas.width = w;
+        canvas.height = h;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, w, h);
+        let compressed;
+        try{
+          compressed = canvas.toDataURL('image/jpeg', 0.72);
+        }catch(err){
+          compressed = e.target.result;
+        }
+
+        if(currentUser){
+          uploadingImageIds.add(itemId);
+          render();
+
+          // 上傳到雲端檔案空間，如果失敗先安靜重試最多 2 次，
+          // 不要一失敗就馬上跳警示嚇到使用者——大部分失敗都只是
+          // 一時的網路小狀況，重試一下通常就會成功。
+          let uploadedUrl = null;
+          let lastUploadErr = null;
+          for(let attempt = 1; attempt <= 3 && !uploadedUrl; attempt++){
+            try{
+              const blob = await (await fetch(compressed)).blob();
+              const filePath = `${currentUser.id}/${itemId}-${Date.now()}-${attempt}.jpg`;
+              const { error: uploadError } = await supabaseClient.storage
+                .from('trip-photos')
+                .upload(filePath, blob, { contentType: 'image/jpeg', upsert: true });
+              if(uploadError) throw uploadError;
+
+              const { data: urlData } = supabaseClient.storage
+                .from('trip-photos')
+                .getPublicUrl(filePath);
+              uploadedUrl = urlData.publicUrl;
+            }catch(err){
+              lastUploadErr = err;
+              if(attempt < 3){
+                await new Promise(r => setTimeout(r, 800 * attempt));
+              }
+            }
+          }
+
+          if(uploadedUrl){
+            const uploadTrip = state.trips.find(t => t.id === state.currentTripId);
+            const uploadItem = uploadTrip && uploadTrip.categories[catId] && uploadTrip.categories[catId].items.find(i => i.id === itemId);
+            if(uploadItem){ uploadItem.image = uploadedUrl; }
+            uploadingImageIds.delete(itemId);
+            render();
+
+            // 照片本身最耗時的「上傳到雲端檔案空間」步驟已經做完了，
+            // 這裡直接立即存檔，不要再走一般存檔用的 0.6 秒防抖動延遲
+            // ——那個延遲原本是設計給「連續打字」用的，照片上傳不需要，
+            // 只會白白拉長「還在同步中」的總時間。
+            if(uploadTrip){
+              uploadTrip.updated_at = new Date().toISOString();
+              saveLocalCache(state.trips);
+              await saveToSupabase();
+            }
+          }else{
+            console.error('照片上傳到雲端檔案空間失敗（已重試 3 次）:', lastUploadErr);
+            // 重試 3 次都失敗，才退回舊方式（直接存照片內容），
+            // 至少不會讓照片完全加不進去。
+            updateItem(catId, itemId, 'image', compressed);
+            uploadingImageIds.delete(itemId);
+            render();
+            showToast('照片雲端上傳失敗，已先暫時用舊方式存起來：' + ((lastUploadErr && lastUploadErr.message) || '未知錯誤'), true);
+          }
+        } else {
+          // 訪客模式沒有雲端帳號，沒有雲端檔案空間可以用，維持原本
+          // 直接把照片內容存進行程資料的方式。
+          updateItem(catId, itemId, 'image', compressed);
+          render();
+        }
+        resolveOuter();
+      };
+      img.onerror = function(){
+        showToast('這張照片讀取失敗，請換一張試試看', true);
+        resolveOuter();
+      };
+      img.src = e.target.result;
     };
-    img.onerror = function(){
+    reader.onerror = function(){
       showToast('這張照片讀取失敗，請換一張試試看', true);
+      resolveOuter();
     };
-    img.src = e.target.result;
-  };
-  reader.onerror = function(){
-    showToast('這張照片讀取失敗，請換一張試試看', true);
-  };
-  reader.readAsDataURL(file);
+    reader.readAsDataURL(file);
+  });
 }
 
 function openImageModal(imgSrc){
