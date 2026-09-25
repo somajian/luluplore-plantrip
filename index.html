@@ -1125,6 +1125,11 @@ let isPickingImage = false;
 let uploadingImageIds = new Set();
 function isUserBusy(){
   if(isPickingImage) return true;
+  // 照片還在壓縮/上傳到雲端檔案空間的整個過程中，都算「忙碌中」——
+  // 之前只有「還在系統相簿裡挑照片」那段有保護，挑完照片、系統相簿
+  // 關閉之後，其實還要花時間壓縮、上傳，這段時間如果沒被視為忙碌，
+  // 剛好被別的自動同步動作插隊，就可能把還沒真正存上雲端的照片蓋掉。
+  if(uploadingImageIds.size > 0) return true;
   const activeTag = document.activeElement && document.activeElement.tagName;
   if(activeTag === 'INPUT' || activeTag === 'TEXTAREA') return true;
   try{
@@ -3127,9 +3132,21 @@ function handleImageUpload(catId, itemId, event){
             .from('trip-photos')
             .getPublicUrl(filePath);
 
-          updateItem(catId, itemId, 'image', urlData.publicUrl);
+          const uploadTrip = state.trips.find(t => t.id === state.currentTripId);
+          const uploadItem = uploadTrip && uploadTrip.categories[catId] && uploadTrip.categories[catId].items.find(i => i.id === itemId);
+          if(uploadItem){ uploadItem.image = urlData.publicUrl; }
           uploadingImageIds.delete(itemId);
           render();
+
+          // 照片本身最耗時的「上傳到雲端檔案空間」步驟已經做完了，
+          // 這裡直接立即存檔，不要再走一般存檔用的 0.6 秒防抖動延遲
+          // ——那個延遲原本是設計給「連續打字」用的，照片上傳不需要，
+          // 只會白白拉長「還在同步中」的總時間。
+          if(uploadTrip){
+            uploadTrip.updated_at = new Date().toISOString();
+            saveLocalCache(state.trips);
+            await saveToSupabase();
+          }
         }catch(uploadErr){
           console.error('照片上傳到雲端檔案空間失敗:', uploadErr);
           // 上傳失敗的話，先退回舊方式（直接存照片內容），至少不會讓
@@ -3457,12 +3474,12 @@ function render(){
    結果使用者回來隨手一改，就把其他裝置這段時間做的變更整個蓋掉」
    這種多裝置編輯時特別容易發生的問題。 */
 document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'visible' && currentUser && !isUserBusy()) {
+  if (document.visibilityState === 'visible' && currentUser && !isUserBusy() && !isRemoteUpdating) {
     syncFromSupabase(false);
   }
 });
 window.addEventListener('focus', () => {
-  if (currentUser && !isUserBusy()) {
+  if (currentUser && !isUserBusy() && !isRemoteUpdating) {
     syncFromSupabase(false);
   }
 });
