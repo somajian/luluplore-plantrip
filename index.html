@@ -1449,6 +1449,40 @@ async function syncFromSupabase(isRealtimeTrigger = false) {
 
     if (userTripsErr) throw userTripsErr;
 
+    let finalUserTrips = userTrips || [];
+
+    // 保險機制：如果剛登入完，查回來的行程是「空的」，先不要急著
+    // 認定這個帳號真的沒有任何行程。有可能是剛登入完成，登入權杖
+    // 還沒完全同步到這次查詢請求上，導致被誤判成「沒有權限、查不到」，
+    // 而不是真的沒有資料。這裡最多重試 2 次（各稍等一下再查一次），
+    // 避免把使用者辛苦建立的行程資料誤判成「全部不見」，
+    // 讓人看到空空的畫面而緊張。
+    if (finalUserTrips.length === 0 && !isRealtimeTrigger) {
+      const hadTripsBeforeThisSync = (state.trips || []).length > 0;
+
+      for (let attempt = 1; attempt <= 2 && finalUserTrips.length === 0; attempt++) {
+        await new Promise(resolve => setTimeout(resolve, 900 * attempt));
+        const { data: retryTrips, error: retryErr } = await supabaseClient
+          .from('trips')
+          .select('*')
+          .eq('user_id', currentUser.id);
+        if (!retryErr && retryTrips && retryTrips.length > 0) {
+          console.warn(`第 ${attempt} 次查詢行程資料是空的，重試後找到資料，代表剛才確實撞到登入時機差的問題`);
+          finalUserTrips = retryTrips;
+        }
+      }
+
+      // 最後一道防線：重試 2 次之後還是查不到任何行程，但這台裝置
+      // 原本畫面上明明就看得到行程資料——寧可保守一點，保留原本
+      // 畫面上的內容，不要用這次很可能有問題的空結果去覆蓋掉，
+      // 避免使用者看到「行程全部不見」這種最壞的情況。
+      if (finalUserTrips.length === 0 && hadTripsBeforeThisSync) {
+        console.warn('雲端查詢持續回傳空結果，但本機原本就有行程資料，這次不會用空結果覆蓋，保留原本畫面內容');
+        showToast('暫時無法確認雲端最新資料，先繼續顯示這台裝置上原本看到的行程，建議稍後重新整理一次確認', true);
+        return;
+      }
+    }
+
     const { data: collabData, error: collabErr } = await supabaseClient
       .from('trip_collaborators')
       .select('trip_id, role')
@@ -1476,7 +1510,7 @@ async function syncFromSupabase(isRealtimeTrigger = false) {
       }
     }
 
-    const remoteOwned = (userTrips || []).map(t => ({
+    const remoteOwned = finalUserTrips.map(t => ({
       id: t.id,
       user_id: t.user_id,
       destination: t.destination || '未命名行程',
