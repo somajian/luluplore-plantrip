@@ -1250,7 +1250,18 @@ function scheduleSave(){
       saveLocalCache(state.trips);
 
       if(currentUser) {
-        await saveToSupabase();
+        // 只送「目前正在編輯的這趟行程」，不要把使用者所有的行程都
+        // 打包送出去——之前這裡沒有指定範圍，預設會送出全部行程，
+        // 導致就算只是在某一趟行程打幾個字，也會連帶把其他行程
+        // （可能已經累積不少照片、體積比較大）一起重新傳送一次，
+        // 這就是純文字編輯也要等很久的根本原因。
+        // 只有「真的停留在某趟行程的詳細頁面」時才縮小範圍；
+        // 如果是在行程列表頁（例如拖曳調整行程順序，會同時影響
+        // 好幾趟行程），還是要送出全部行程，才不會漏存。
+        const currentTrip = (state.view === 'trip')
+          ? state.trips.find(t => t.id === state.currentTripId)
+          : null;
+        await saveToSupabase(currentTrip ? [currentTrip] : state.trips);
       }
     }
     catch(e){
