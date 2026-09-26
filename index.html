@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="zh-Hant">
 <head>
@@ -63,16 +64,6 @@ input,textarea,select{font-family:inherit;}
 .sync-dot.synced { background: #27ae60; }
 .sync-dot.syncing { background: #f39c12; animation: pulse 1s infinite; }
 @keyframes pulse { 0% { opacity: 0.4; } 50% { opacity: 1; } 100% { opacity: 0.4; } }
-.floating-sync-badge{
-  position:fixed;top:12px;left:50%;transform:translateX(-50%);z-index:200;
-  background:var(--ink);color:var(--white);font-size:12.5px;font-weight:600;
-  padding:8px 16px;border-radius:30px;display:flex;align-items:center;gap:8px;
-  box-shadow:0 6px 18px rgba(27,42,74,0.35);white-space:nowrap;
-}
-.floating-sync-dot{width:8px;height:8px;border-radius:50%;background:#f39c12;flex-shrink:0;animation:pulse 1s infinite;}
-@media (max-width:520px){
-  .floating-sync-badge{font-size:11.5px;padding:7px 12px;top:8px;max-width:92vw;white-space:normal;text-align:center;}
-}
 
 .btn-auth {
   background: var(--white);
@@ -839,24 +830,16 @@ input,textarea,select{font-family:inherit;}
 <input type="file" id="import-input" accept="application/json" style="display:none;">
 
 <script>
+/* Luluplore stable photo-storage build: old stable UI + Storage URL photos */
 /* ===================== Supabase 設定與初始化 ===================== */
 const SUPABASE_URL = "https://jgftnhhddhsblkgsrfvd.supabase.co";
 const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpnZnRuaGhkZGhzYmxrZ3NyZnZkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODczMDAwNzksImV4cCI6MjEwMjg3NjA3OX0.eDtdPg2JGMP8HwKDEaeXCZqNUvBDdObe9IpWdaN6LlU";
 const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 let currentUser = null;
-let syncingCount = 0;
-function beginSyncing(){ syncingCount++; }
-function endSyncing(){ syncingCount = Math.max(0, syncingCount - 1); }
-// 保留 isSyncing 這個名稱給畫面渲染的地方讀取用，實際上是看計數器
-// 是不是大於 0（同時有好幾個同步動作在跑，也只有全部結束才算完成）。
-Object.defineProperty(globalThis, 'isSyncing', {
-  get(){ return syncingCount > 0; },
-  configurable: true
-});
+let isSyncing = false;
 let realtimeChannel = null;
 let isRemoteUpdating = false;
-let lastSyncTriggerTime = 0;
 let remoteUpdatingWatchdog = null;
 // 設定 isRemoteUpdating 的保險機制：只要設成 true，就會同時安排一個
 // 最多 8 秒後自動解鎖的保險計時器。正常情況下，各個存檔/同步函式
@@ -1070,50 +1053,13 @@ function autoGrowTextarea(el){
 }
 
 let localCacheFullWarned = false;
-// 把要存進本機備份的資料「精簡化」：拿掉每個項目裡的照片（item.image），
-// 只保留文字資料。因為手機瀏覽器的本機儲存空間天生就只有 5-10MB 左右，
-// 購物清單本來就會累積很多照片，硬塞進這麼小的空間注定會爆滿。
-// 照片完全交給雲端負責保存（雲端資料庫的容量大很多，不會有這個問題），
-// 本機備份只當作「文字資料」的安全網，這樣就不會再被照片塞爆了。
-function stripImagesForLocalCache(trips){
-  try{
-    return (trips || []).map(trip => {
-      const newCategories = {};
-      const cats = trip.categories || {};
-      Object.keys(cats).forEach(catId => {
-        const catData = cats[catId];
-        if(catData && Array.isArray(catData.items)){
-          newCategories[catId] = {
-            ...catData,
-            items: catData.items.map(item => {
-              if(item && item.image){
-                const { image, ...rest } = item;
-                return rest;
-              }
-              return item;
-            })
-          };
-        } else {
-          newCategories[catId] = catData;
-        }
-      });
-      return { ...trip, categories: newCategories };
-    });
-  }catch(e){
-    console.warn('精簡本機備份資料時發生錯誤，改用原始資料', e);
-    return trips;
-  }
-}
-
 function saveLocalCache(trips){
-  // 有登入帳號的話，照片交給雲端保存，本機備份濾掉照片、只留文字，
-  // 避免本機空間被大量照片塞爆。
-  // 但訪客模式（沒有登入）沒有雲端可以依靠，本機備份是唯一能保存
-  // 資料的地方——這種情況絕對不能把照片濾掉，不然照片會直接消失、
-  // 重新整理就不見，比空間爆滿還嚴重。
+  // 已經登入帳號的話，資料完全交給雲端負責，不需要另外佔用手機的
+  // 本機儲存空間、也不會再有「本機空間爆滿」這種問題。
+  // 只有「訪客模式（沒有登入）」才需要靠本機儲存，因為訪客沒有雲端帳號可以存。
+  if(currentUser) return;
   try{
-    const dataToSave = currentUser ? stripImagesForLocalCache(trips) : trips;
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(dataToSave));
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(trips));
     localCacheFullWarned = false;
   }catch(e){
     console.warn('本機快取儲存失敗（通常是瀏覽器儲存空間已滿）:', e);
@@ -1121,11 +1067,7 @@ function saveLocalCache(trips){
       localCacheFullWarned = true;
       const userTyping = isUserBusy();
       if(!userTyping){
-        if(currentUser){
-          showToast('這台裝置的本機備份空間已滿，暫時無法本機備份文字資料（雲端仍會繼續嘗試同步，照片也都是存在雲端不受影響）', true);
-        } else {
-          showToast('這台裝置的本機儲存空間已滿，訪客模式的照片可能無法保存，建議登入帳號改用雲端同步、或清一下比較大張的照片', true);
-        }
+        showToast('這台裝置的本機儲存空間已滿，訪客模式暫時無法備份，建議登入帳號改用雲端同步', true);
       }
     }
   }
@@ -1136,15 +1078,12 @@ function saveLocalCache(trips){
 // 2. 正在選取一段文字（例如長按準備複製），就算那段文字不在輸入框裡也算
 // 只要符合其中一種，這次的自動重繪就先跳過，避免打斷使用者正在做的事。
 let isPickingImage = false;
-// 記錄目前正在上傳到雲端檔案空間的項目 id，讓畫面上可以顯示「上傳中」提示。
+// 照片上傳狀態只用來保護照片流程，不會阻塞一般文字新增/修改。
 let uploadingImageIds = new Set();
+let imageUploadQueue = Promise.resolve();
+
 function isUserBusy(){
   if(isPickingImage) return true;
-  // 照片還在壓縮/上傳到雲端檔案空間的整個過程中，都算「忙碌中」——
-  // 之前只有「還在系統相簿裡挑照片」那段有保護，挑完照片、系統相簿
-  // 關閉之後，其實還要花時間壓縮、上傳，這段時間如果沒被視為忙碌，
-  // 剛好被別的自動同步動作插隊，就可能把還沒真正存上雲端的照片蓋掉。
-  if(uploadingImageIds.size > 0) return true;
   const activeTag = document.activeElement && document.activeElement.tagName;
   if(activeTag === 'INPUT' || activeTag === 'TEXTAREA') return true;
   try{
@@ -1224,25 +1163,21 @@ function loadTrips(){
   return [];
 }
 
-function saveToSupabase() {
-  return syncToSupabase();
+function saveToSupabase(tripsToSave = state.trips) {
+  return syncToSupabase(tripsToSave);
 }
 
 function scheduleSave(){
   clearTimeout(saveTimer);
 
-  // 從「這一刻」（排定要存檔）就先鎖住即時同步的自動重繪，一直鎖到真正存檔完成為止。
-  // 如果只在「真正開始呼叫雲端 API」那一刻才鎖，中間 600 毫秒的等待時間會有一段空窗，
-  // 萬一剛好在這段空窗期間收到即時同步的通知，就會把「還沒送出去的本地變更」
-  // （例如剛上傳、還沒存到雲端的照片）用舊資料蓋掉，導致看起來第一次都沒加進去，
-  // 要重新加一次才會出現——這就是這次的根本原因。
+  // 一般文字/勾選/金額等操作維持原本的 600ms debounce。
+  // 關鍵差異：在行程詳細頁只同步「目前這一趟」，不再每打幾個字就把
+  // 使用者所有行程一起重新傳送。照片本身也不會放進 JSON，而只存 URL。
   setRemoteUpdating(true);
 
   if(currentUser && state.currentTripId){
     const currentTrip = state.trips.find(t => t.id === state.currentTripId);
-    if(currentTrip){
-      currentTrip.updated_at = new Date().toISOString();
-    }
+    if(currentTrip) currentTrip.updated_at = new Date().toISOString();
   }
 
   saveTimer = setTimeout(async ()=>{
@@ -1250,30 +1185,16 @@ function scheduleSave(){
       saveLocalCache(state.trips);
 
       if(currentUser) {
-        // 只送「目前正在編輯的這趟行程」，不要把使用者所有的行程都
-        // 打包送出去——之前這裡沒有指定範圍，預設會送出全部行程，
-        // 導致就算只是在某一趟行程打幾個字，也會連帶把其他行程
-        // （可能已經累積不少照片、體積比較大）一起重新傳送一次，
-        // 這就是純文字編輯也要等很久的根本原因。
-        // 只有「真的停留在某趟行程的詳細頁面」時才縮小範圍；
-        // 如果是在行程列表頁（例如拖曳調整行程順序，會同時影響
-        // 好幾趟行程），還是要送出全部行程，才不會漏存。
         const currentTrip = (state.view === 'trip')
           ? state.trips.find(t => t.id === state.currentTripId)
           : null;
         await saveToSupabase(currentTrip ? [currentTrip] : state.trips);
       }
-    }
-    catch(e){
+    } catch(e){
       console.error('儲存失敗', e);
-      showToast('儲存失敗，可能是瀏覽器處於無痕模式或儲存空間已滿，建議立即匯出備份', true);
-    }
-    finally {
-      if(!currentUser){
-        setRemoteUpdating(false);
-      }
-      // 有登入的話，isRemoteUpdating 交給 syncToSupabase() 自己的
-      // finally 區塊處理（它會在存檔完成後再多留 500 毫秒緩衝才解鎖）。
+      showToast('儲存失敗，請檢查網路後再試；重要資料可先匯出 JSON 備份', true);
+    } finally {
+      if(!currentUser) setRemoteUpdating(false);
     }
   }, 600);
 }
@@ -1306,8 +1227,7 @@ async function signOut() {
   }
 
   currentUser = null;
-  endSyncing();
-  hasLoadedTripsForSession = false;
+  isSyncing = false;
 
   // 登出後把這台裝置上的資料快取也一併清掉，避免帳號的行程資料
   // 繼續留在裝置上（例如公用電腦、借用他人手機的情況）。
@@ -1353,37 +1273,10 @@ function subscribeRealtime() {
     });
 }
 
-// 判斷是不是「暫時性的網路問題」造成的失敗（例如切去手機相簿選照片時，
-// 頁面被系統放到背景、連線被中斷，導致這次上傳剛好失敗）。
-// 這種情況資料通常沒有真的遺失，等網路穩定後重試一次就會成功，
-// 不需要跳出嚇人的錯誤訊息讓使用者緊張。
-function isTransientNetworkError(msg){
-  return /load failed|failed to fetch|network|timeout|connection|offline/i.test(msg || '');
-}
-
-// 安靜重試最多幾次；如果超過這個次數還是一直失敗，代表很可能不是真的
-// 「暫時性」網路問題（例如背景一下下、訊號閃一下），而是持續性的問題
-// （例如資料太大、網路真的斷線很久），這種情況必須明確警告使用者，
-// 不能再繼續安靜重試下去，不然使用者完全不會知道資料其實一直沒存上雲端。
-let quietRetryCount = 0;
-const MAX_QUIET_RETRY = 6;
-function scheduleQuietRetry(){
-  quietRetryCount++;
-  if(quietRetryCount > MAX_QUIET_RETRY){
-    quietRetryCount = 0;
-    showToast('雲端同步持續失敗，你的變更可能還沒有存到雲端！建議檢查網路連線，並立即用「匯出 JSON 備份」保存一份資料以防萬一', true);
-    return;
-  }
-  // 等待時間隨重試次數拉長（3, 6, 9, 12, 15, 18 秒），
-  // 給資料量比較大的情況（例如一口氣上傳很多張照片）更多耐心，
-  // 不要太快就放棄、跳出警告嚇到使用者。
-  setTimeout(()=>{ scheduleSave(); }, 3000 * quietRetryCount);
-}
-
 async function syncToSupabase(tripsToSave = state.trips) {
   if (!currentUser || !Array.isArray(tripsToSave)) return false;
 
-  beginSyncing();
+  isSyncing = true;
   setRemoteUpdating(true);
   if(!isUserBusy()) render();
 
@@ -1418,9 +1311,6 @@ async function syncToSupabase(tripsToSave = state.trips) {
       const upsertMsg = error.message || '';
       if(/jwt.*issued at future|issued at future/i.test(upsertMsg)){
         showToast('雲端同步失敗：你的裝置時間跟伺服器對不上，請到設定裡把日期與時間改成「自動設定」，再登出重新登入一次', true);
-      } else if(isTransientNetworkError(upsertMsg)){
-        console.warn('暫時性網路問題，稍後自動重試（例如切去相簿選照片時連線被中斷）：', upsertMsg);
-        scheduleQuietRetry();
       } else {
         showToast('雲端同步失敗：' + upsertMsg, true);
       }
@@ -1428,7 +1318,6 @@ async function syncToSupabase(tripsToSave = state.trips) {
     }
 
     saveLocalCache(state.trips);
-    quietRetryCount = 0;
     return true;
 
   } catch (err) {
@@ -1436,15 +1325,12 @@ async function syncToSupabase(tripsToSave = state.trips) {
     const errMsg = (err && err.message) || '';
     if(/jwt.*issued at future|issued at future/i.test(errMsg)){
       showToast('雲端同步失敗：你的裝置時間跟伺服器對不上，請到設定裡把日期與時間改成「自動設定」，再登出重新登入一次', true);
-    } else if(isTransientNetworkError(errMsg) || isTransientNetworkError(String(err))){
-      console.warn('暫時性網路問題，稍後自動重試（例如切去相簿選照片時連線被中斷）：', errMsg || err);
-      scheduleQuietRetry();
     } else {
       showToast('雲端同步失敗，請稍後再試', true);
     }
     return false;
   } finally {
-    endSyncing();
+    isSyncing = false;
     setTimeout(() => { setRemoteUpdating(false); }, 500);
     if(!isUserBusy()) render();
   }
@@ -1456,10 +1342,9 @@ async function loadFromSupabase() {
 
 async function syncFromSupabase(isRealtimeTrigger = false) {
   if (!currentUser) return;
-  lastSyncTriggerTime = Date.now();
 
   if (!isRealtimeTrigger) {
-    beginSyncing();
+    isSyncing = true;
     if(!isUserBusy()) render();
   }
 
@@ -1481,43 +1366,6 @@ async function syncFromSupabase(isRealtimeTrigger = false) {
       .eq('user_id', currentUser.id);
 
     if (userTripsErr) throw userTripsErr;
-
-    let finalUserTrips = userTrips || [];
-
-    // 保險機制：如果剛登入完，查回來的行程是「空的」，先不要急著
-    // 認定這個帳號真的沒有任何行程。有可能是剛登入完成，登入權杖
-    // 還沒完全同步到這次查詢請求上，導致被誤判成「沒有權限、查不到」，
-    // 而不是真的沒有資料。這裡最多重試 2 次（各稍等一下再查一次），
-    // 避免把使用者辛苦建立的行程資料誤判成「全部不見」，
-    // 讓人看到空空的畫面而緊張。
-    if (finalUserTrips.length === 0 && !isRealtimeTrigger) {
-      const hadTripsBeforeThisSync = (state.trips || []).length > 0;
-
-      // 重試次數跟等待時間加大：1、2、3、4 秒，最多重試 4 次（總共約
-      // 10 秒），因為之前設定的重試次數還是不夠長，登入權杖的同步
-      // 延遲有時候會超過原本預留的時間。
-      for (let attempt = 1; attempt <= 4 && finalUserTrips.length === 0; attempt++) {
-        await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
-        const { data: retryTrips, error: retryErr } = await supabaseClient
-          .from('trips')
-          .select('*')
-          .eq('user_id', currentUser.id);
-        if (!retryErr && retryTrips && retryTrips.length > 0) {
-          console.warn(`第 ${attempt} 次查詢行程資料是空的，重試後找到資料，代表剛才確實撞到登入時機差的問題`);
-          finalUserTrips = retryTrips;
-        }
-      }
-
-      // 最後一道防線：重試 2 次之後還是查不到任何行程，但這台裝置
-      // 原本畫面上明明就看得到行程資料——寧可保守一點，保留原本
-      // 畫面上的內容，不要用這次很可能有問題的空結果去覆蓋掉，
-      // 避免使用者看到「行程全部不見」這種最壞的情況。
-      if (finalUserTrips.length === 0 && hadTripsBeforeThisSync) {
-        console.warn('雲端查詢持續回傳空結果，但本機原本就有行程資料，這次不會用空結果覆蓋，保留原本畫面內容');
-        showToast('暫時無法確認雲端最新資料，先繼續顯示這台裝置上原本看到的行程，建議稍後重新整理一次確認', true);
-        return;
-      }
-    }
 
     const { data: collabData, error: collabErr } = await supabaseClient
       .from('trip_collaborators')
@@ -1546,7 +1394,7 @@ async function syncFromSupabase(isRealtimeTrigger = false) {
       }
     }
 
-    const remoteOwned = finalUserTrips.map(t => ({
+    const remoteOwned = (userTrips || []).map(t => ({
       id: t.id,
       user_id: t.user_id,
       destination: t.destination || '未命名行程',
@@ -1636,13 +1484,11 @@ async function syncFromSupabase(isRealtimeTrigger = false) {
     const msg = (e && e.message) || '';
     if(/jwt.*issued at future|issued at future/i.test(msg)){
       showToast('雲端連線失敗：你的裝置時間跟伺服器對不上，請到設定裡把日期與時間改成「自動設定」，再登出重新登入一次', true);
-    } else if(isTransientNetworkError(msg) || isTransientNetworkError(String(e))){
-      console.warn('暫時性網路問題，先安靜略過（例如切去相簿選照片時連線被中斷）：', msg || e);
     } else {
       showToast('無法讀取雲端資料：' + (msg || '未知錯誤'), true);
     }
   } finally {
-    endSyncing();
+    isSyncing = false;
     // 如果這次是「即時同步」自動觸發的（不是使用者手動操作），
     // 而且使用者當下正在某個欄位輸入中，就先不要重繪畫面——
     // 不然畫面重繪會把正在輸入的欄位整個換掉，手機的鍵盤會因此收起來。
@@ -1656,26 +1502,9 @@ async function syncFromSupabase(isRealtimeTrigger = false) {
 }
 
 /* 監聽 Auth 狀態 */
-let hasLoadedTripsForSession = false;
-
 supabaseClient.auth.onAuthStateChange((event, session) => {
   if (session && session.user) {
     currentUser = session.user;
-
-    // Supabase 的登入狀態監聽器，在頁面載入時常常會觸發不只一次
-    // （例如「偵測到已有登入」、「背景權杖更新」都算不同事件，
-    // 但都會帶著有效的登入狀態），如果每次觸發都整包重新抓一次
-    // 所有行程資料，就會變成同一個網頁裡短時間內重複查詢好幾次，
-    // 資料傳輸量疊加起來，才會一直卡在「同步中」。
-    // 這裡改成：這次瀏覽階段只要完整載入過一次，之後除非是真的
-    // 重新登入（SIGNED_IN），不然不會再重複整包抓取。
-    const needsFullLoad = !hasLoadedTripsForSession || event === 'SIGNED_IN';
-
-    if (!needsFullLoad) {
-      if(!isUserBusy()) render();
-      return;
-    }
-    hasLoadedTripsForSession = true;
 
     setTimeout(async () => {
       try {
@@ -1714,6 +1543,8 @@ supabaseClient.auth.onAuthStateChange((event, session) => {
 
         await loadFromSupabase();
         subscribeRealtime();
+        // 不等待搬移完成：舊 Base64 照片在背景慢慢搬，不拖慢登入與一般編輯。
+        setTimeout(() => { migrateLegacyBase64Photos(); }, 1200);
       } catch (err) {
         console.error('Auth sync initialization error:', err);
         showToast('登入成功，但雲端同步初始化失敗：' + (err.message || '未知錯誤'), true);
@@ -2012,7 +1843,7 @@ function addItem(catId, itemData = {}){
     sortExpenseItemsByDate(trip);
   }
 
-  ui.newItem[catId] = { text:'', amount:'', currency: draft.currency || '', category:'吃', payment:'現金', date:'', day:'', note:'', link:'', subgroup: resolvedSubgroup };
+  ui.newItem[catId] = { text:'', amount:'', currency: draft.currency || 'JPY', category:'吃', payment:'現金', date:'', day:'', note:'', link:'', subgroup: resolvedSubgroup };
   
   scheduleSave();
   render();
@@ -2228,36 +2059,24 @@ function applyBulk(catId){
   const catData_hasSubgroups = !!(tripCatData && tripCatData.subgroups && tripCatData.subgroups.length > 0);
 
   if(catDef.type === 'itinerary'){
-    // 單獨一行的「Day 1」「D1」「第1天」，或是單獨一行的日期
-    // （例如 9/27、2026/9/27）都會被當成標題，不會自己變成一筆項目，
-    // 底下的每一行都會自動歸類到這個標題，直到遇到下一個標題為止。
+    // 單獨一行的「Day 1」「D1」「第1天」會被當成標題，不會自己變成一筆項目，
+    // 底下的每一行都會自動歸類到這個 Day，直到遇到下一個 Day 標題為止。
     let currentDay = '';
     const dayHeaderRe = /^(Day\s*\d+|D\d+|第\s*\d+\s*天)$/i;
     const dayInlineRe = /^(Day\s*\d+|D\d+|第\s*\d+\s*天)\s*[:：\s]+(.+)/i;
-    const dateInlineRe = /^(\d{1,2}[\/\-]\d{1,2}|\d{4}[\/\-]\d{1,2}[\/\-]\d{1,2})\s*[:：\s]+(.+)/;
     lines.forEach(line=>{
       const headerMatch = line.match(dayHeaderRe);
       if(headerMatch){
         currentDay = headerMatch[1].trim();
         return;
       }
-      if(isWholeDateLine(line)){
-        currentDay = line.trim();
-        return;
-      }
       const inlineMatch = line.match(dayInlineRe);
       if(inlineMatch){
         currentDay = inlineMatch[1].trim();
         addItem(catId, { text: inlineMatch[2].trim(), day: currentDay });
-        return;
+      } else {
+        addItem(catId, { text: line, day: currentDay });
       }
-      const dateInlineMatch = line.match(dateInlineRe);
-      if(dateInlineMatch){
-        currentDay = dateInlineMatch[1].trim();
-        addItem(catId, { text: dateInlineMatch[2].trim(), day: currentDay });
-        return;
-      }
-      addItem(catId, { text: line, day: currentDay });
     });
   } else {
     const targetSubgroup = (catData_hasSubgroups) ? (ui.bulkSubgroupTarget[catId] || '') : undefined;
@@ -3008,12 +2827,10 @@ function renderItemBlock(trip, cat, item, idx){
           ${PHOTO_ENABLED_CATEGORY_IDS.includes(cat.id) ? `
             <div class="item-photo-block">
               <div class="shopping-img-wrap" onclick="triggerImageUpload('${item.id}')">
-                ${uploadingImageIds.has(item.id)
-                  ? `<div class="shopping-img-placeholder">⬆️ 上傳中…</div>`
-                  : (item.image
-                    ? `<img src="${escapeAttr(item.image)}" alt="附加照片" onclick="event.stopPropagation(); openImageModal('${escapeJsAttr(item.image)}')">
-                       <button type="button" class="shopping-img-edit-btn" onclick="event.stopPropagation(); triggerImageUpload('${item.id}')" title="更換照片">✎</button>`
-                    : `<div class="shopping-img-placeholder">+ 新增照片<br>（例如訂單確認信）</div>`)}
+                ${item.image
+                  ? `<img src="${escapeAttr(item.image)}" alt="附加照片" onclick="event.stopPropagation(); openImageModal('${escapeJsAttr(item.image)}')">
+                     <button type="button" class="shopping-img-edit-btn" onclick="event.stopPropagation(); triggerImageUpload('${item.id}')" title="更換照片">✎</button>`
+                  : `<div class="shopping-img-placeholder">+ 新增照片<br>（例如訂單確認信）</div>`}
               </div>
               <input type="file" id="img-input-${item.id}" class="img-upload-input" accept="image/*" onchange="handleImageUpload('${cat.id}', '${item.id}', event)">
             </div>
@@ -3038,12 +2855,10 @@ function renderShoppingCard(trip, cat, item) {
   return `
     <div class="shopping-card ${isDone ? 'done' : ''}">
       <div class="shopping-img-wrap" onclick="triggerImageUpload('${item.id}')">
-        ${uploadingImageIds.has(item.id)
-          ? `<div class="shopping-img-placeholder">⬆️ 上傳中…</div>`
-          : (item.image
-            ? `<img src="${escapeAttr(item.image)}" alt="商品照片" onclick="event.stopPropagation(); openImageModal('${escapeJsAttr(item.image)}')">
-               <button type="button" class="shopping-img-edit-btn" onclick="event.stopPropagation(); triggerImageUpload('${item.id}')" title="更換照片">✎</button>`
-            : `<div class="shopping-img-placeholder">+ 新增照片</div>`)}
+        ${item.image
+          ? `<img src="${escapeAttr(item.image)}" alt="商品照片" onclick="event.stopPropagation(); openImageModal('${escapeJsAttr(item.image)}')">
+             <button type="button" class="shopping-img-edit-btn" onclick="event.stopPropagation(); triggerImageUpload('${item.id}')" title="更換照片">✎</button>`
+          : `<div class="shopping-img-placeholder">+ 新增照片</div>`}
       </div>
       <input type="file" id="img-input-${item.id}" class="img-upload-input" accept="image/*" onchange="handleImageUpload('${cat.id}', '${item.id}', event)">
       <div style="display:flex;align-items:center;gap:4px;">
@@ -3142,129 +2957,157 @@ function triggerImageUpload(itemId){
   }
 }
 
-// 存檔後的驗證：直接跟雲端資料庫確認，剛剛存的這張照片網址，
-// 是不是真的已經在雲端的 categories 資料裡了，而不是只看存檔動作
-// 本身有沒有報錯就直接相信它成功了。
-// 照片上傳排隊機制：如果使用者連續新增好幾張照片，強制排成一列、
-// 一次只處理一張，不會讓好幾個上傳動作同時搶著跑，避免互相衝突
-// （之前同時上傳兩張照片時，偶爾會跳出「已先用舊方式存起來」的
-// 警示，就是這個原因造成的）。
-let imageUploadQueue = Promise.resolve();
-
 function handleImageUpload(catId, itemId, event){
   isPickingImage = false;
   const file = event.target.files[0];
+  event.target.value = '';
   if(!file) return;
 
+  // 連續選很多張時排隊處理，避免多張照片同時搶著改同一趟行程。
   imageUploadQueue = imageUploadQueue
     .then(() => processImageUpload(catId, itemId, file))
-    .catch(err => console.error('照片排隊處理時發生未預期錯誤:', err));
+    .catch(err => {
+      console.error('照片上傳流程失敗:', err);
+      uploadingImageIds.delete(itemId);
+      if(!isUserBusy()) render();
+      showToast('照片上傳失敗，請確認網路後再試一次', true);
+    });
 }
 
-function processImageUpload(catId, itemId, file){
-  return new Promise((resolveOuter) => {
+function compressImageFile(file){
+  return new Promise((resolve, reject) => {
     const reader = new FileReader();
-    reader.onload = function(e){
+    reader.onerror = () => reject(new Error('照片讀取失敗'));
+    reader.onload = e => {
       const img = new Image();
-      img.onload = async function(){
-        // 把照片縮小到最長邊不超過 900px、重新用較低品質存成 JPEG，
-        // 手機直接拍的照片原始檔常常有好幾 MB，壓縮過後通常只有幾十到
-        // 一百多 KB，之後不管是要上傳到雲端檔案空間、還是訪客模式要
-        // 直接存照片內容，都會安全很多。
-        const maxDim = 900;
-        let w = img.width, h = img.height;
-        if(w > maxDim || h > maxDim){
-          if(w >= h){ h = Math.round(h * maxDim / w); w = maxDim; }
-          else { w = Math.round(w * maxDim / h); h = maxDim; }
-        }
-        const canvas = document.createElement('canvas');
-        canvas.width = w;
-        canvas.height = h;
-        const ctx = canvas.getContext('2d');
-        ctx.drawImage(img, 0, 0, w, h);
-        let compressed;
+      img.onerror = () => reject(new Error('照片格式無法讀取'));
+      img.onload = () => {
         try{
-          compressed = canvas.toDataURL('image/jpeg', 0.72);
-        }catch(err){
-          compressed = e.target.result;
-        }
-
-        // 照片先上傳到獨立的雲端檔案空間（trip-photos），
-        // 取得網址後，只把這個很短的網址存進行程資料裡——
-        // 不再把整張照片內容直接塞進行程資料，這樣不管上傳幾張
-        // 照片，行程本身的資料永遠都維持輕薄，不會再越用越肥、
-        // 越肥越慢。如果雲端檔案空間上傳失敗（例如網路問題），
-        // 才會退回「直接把照片內容存進行程資料」這個備用做法，
-        // 確保照片至少還是加得進去。
-        let imageToSave = compressed;
-        if(currentUser){
-          try{
-            const blob = await (await fetch(compressed)).blob();
-            const filePath = `${currentUser.id}/${itemId}-${Date.now()}.jpg`;
-            const { error: uploadError } = await supabaseClient.storage
-              .from('trip-photos')
-              .upload(filePath, blob, { contentType: 'image/jpeg', upsert: true });
-            if(uploadError) throw uploadError;
-            const { data: urlData } = supabaseClient.storage
-              .from('trip-photos')
-              .getPublicUrl(filePath);
-            imageToSave = urlData.publicUrl;
-          }catch(uploadErr){
-            console.warn('照片上傳到雲端檔案空間失敗，改用直接存檔方式:', uploadErr);
+          const maxDim = 900;
+          let w = img.width, h = img.height;
+          if(w > maxDim || h > maxDim){
+            if(w >= h){ h = Math.round(h * maxDim / w); w = maxDim; }
+            else { w = Math.round(w * maxDim / h); h = maxDim; }
           }
-        }
-
-        const uploadTrip = state.trips.find(t => t.id === state.currentTripId);
-        const uploadItem = uploadTrip && uploadTrip.categories[catId] && uploadTrip.categories[catId].items.find(i => i.id === itemId);
-        if(uploadItem){ uploadItem.image = imageToSave; }
-
-        if(uploadTrip && currentUser){
-          uploadingImageIds.add(itemId);
-        }
-        render();
-
-        if(uploadTrip){
-          uploadTrip.updated_at = new Date().toISOString();
-          saveLocalCache(state.trips);
-          if(currentUser){
-            // 用「精準局部更新」的方式送照片（或照片網址），只傳這一筆
-            // 資料本身給資料庫，不用把整趟行程的資料都重新送一次。
-            // 如果這個資料庫函式還沒設定好，會自動退回原本「整包送」
-            // 的方式，確保照片還是存得進去，只是速度會比較慢一點。
-            try{
-              const { data: rpcSuccess, error: rpcError } = await supabaseClient.rpc('update_item_image', {
-                p_trip_id: uploadTrip.id,
-                p_cat_id: catId,
-                p_item_id: itemId,
-                p_image_data: imageToSave
-              });
-              // 就算沒有報錯，如果回傳的不是 true，也代表資料庫那邊
-              // 找不到這個項目可以更新（很可能是新增的分類群組、新增
-              // 的項目還沒同步到雲端），這種情況一樣要當作失敗、
-              // 改用下面完整存檔的方式，不能只看有沒有錯誤訊息。
-              if(rpcError || rpcSuccess !== true) throw (rpcError || new Error('精準更新找不到對應項目，可能是新項目還沒同步到雲端'));
-            }catch(rpcErr){
-              console.warn('精準局部更新失敗，改用整包存檔方式:', rpcErr);
-              await saveToSupabase([uploadTrip]);
-            }
-          }
-        }
-        uploadingImageIds.delete(itemId);
-        render();
-        resolveOuter();
-      };
-      img.onerror = function(){
-        showToast('這張照片讀取失敗，請換一張試試看', true);
-        resolveOuter();
+          const canvas = document.createElement('canvas');
+          canvas.width = w;
+          canvas.height = h;
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(img, 0, 0, w, h);
+          canvas.toBlob(blob => {
+            if(!blob) return reject(new Error('照片壓縮失敗'));
+            resolve(blob);
+          }, 'image/jpeg', 0.72);
+        }catch(err){ reject(err); }
       };
       img.src = e.target.result;
     };
-    reader.onerror = function(){
-      showToast('這張照片讀取失敗，請換一張試試看', true);
-      resolveOuter();
-    };
     reader.readAsDataURL(file);
   });
+}
+
+function blobToDataUrl(blob){
+  return new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onerror = () => reject(new Error('照片轉換失敗'));
+    r.onload = () => resolve(r.result);
+    r.readAsDataURL(blob);
+  });
+}
+
+async function uploadPhotoBlob(blob, tripId, catId, itemId){
+  if(!currentUser) throw new Error('尚未登入');
+  const safeCat = String(catId || 'photo').replace(/[^a-zA-Z0-9_-]/g, '_');
+  const filePath = `${currentUser.id}/${tripId}/${safeCat}-${itemId}-${Date.now()}.jpg`;
+
+  const { error: uploadError } = await supabaseClient.storage
+    .from('trip-photos')
+    .upload(filePath, blob, {
+      contentType: 'image/jpeg',
+      cacheControl: '31536000',
+      upsert: false
+    });
+  if(uploadError) throw uploadError;
+
+  const { data } = supabaseClient.storage.from('trip-photos').getPublicUrl(filePath);
+  if(!data || !data.publicUrl) throw new Error('無法取得照片網址');
+  return data.publicUrl;
+}
+
+async function processImageUpload(catId, itemId, file){
+  const trip = state.trips.find(t => t.id === state.currentTripId);
+  const item = trip && trip.categories[catId] && trip.categories[catId].items.find(i => i.id === itemId);
+  if(!trip || !item) throw new Error('找不到照片所屬項目');
+
+  uploadingImageIds.add(itemId);
+  if(!isUserBusy()) render();
+
+  try{
+    const blob = await compressImageFile(file);
+
+    if(currentUser){
+      // 登入模式：照片本體只進 Storage；行程 JSON 永遠只存短網址。
+      // Storage 成功前不覆蓋舊照片，因此上傳失敗也不會把原照片弄丟。
+      const publicUrl = await uploadPhotoBlob(blob, trip.id, catId, itemId);
+      item.image = publicUrl;
+      trip.updated_at = new Date().toISOString();
+
+      // 照片 URL 已經很小，這裡只同步目前這一趟行程一次。
+      // 不需要 RPC，也不會因 RPC 失敗再反覆整包重傳。
+      const ok = await saveToSupabase([trip]);
+      if(!ok) throw new Error('照片已上傳，但行程資料尚未成功記錄照片網址');
+      showToast('照片已安全存到雲端');
+    } else {
+      // 訪客沒有雲端帳號，只能沿用本機 Base64；仍先壓縮以降低容量。
+      const dataUrl = await blobToDataUrl(blob);
+      item.image = dataUrl;
+      saveLocalCache(state.trips);
+      showToast('照片已存到這台裝置');
+    }
+  } catch(err){
+    console.error('照片處理失敗:', err);
+    const msg = (err && err.message) ? err.message : '未知錯誤';
+    showToast('照片上傳失敗：' + msg + '。原本的照片/資料不會被刪除，請稍後再試。', true);
+  } finally {
+    uploadingImageIds.delete(itemId);
+    render();
+  }
+}
+
+// 舊資料相容：如果登入後的既有行程還留有 data:image/... Base64 照片，
+// 背景逐張搬到 Storage，成功後才換成 URL；任何一張失敗都保留原資料。
+// 這個搬移不阻塞使用者操作，也不會影響已經是 https URL 的新照片。
+let legacyPhotoMigrationRunning = false;
+async function migrateLegacyBase64Photos(){
+  if(!currentUser || legacyPhotoMigrationRunning) return;
+  legacyPhotoMigrationRunning = true;
+  try{
+    for(const trip of state.trips){
+      let changed = false;
+      if(!trip.categories) continue;
+      for(const [catId, catData] of Object.entries(trip.categories)){
+        if(!catData || !Array.isArray(catData.items)) continue;
+        for(const item of catData.items){
+          if(typeof item.image !== 'string' || !item.image.startsWith('data:image/')) continue;
+          try{
+            const blob = await (await fetch(item.image)).blob();
+            const url = await uploadPhotoBlob(blob, trip.id, catId, item.id);
+            item.image = url;
+            changed = true;
+          }catch(err){
+            console.warn('舊照片搬移失敗，保留原資料:', trip.id, catId, item.id, err);
+          }
+        }
+      }
+      if(changed){
+        trip.updated_at = new Date().toISOString();
+        await saveToSupabase([trip]);
+      }
+    }
+  } finally {
+    legacyPhotoMigrationRunning = false;
+    if(!isUserBusy()) render();
+  }
 }
 
 function openImageModal(imgSrc){
@@ -3331,28 +3174,11 @@ function updateTripDate(tripId, key, val){
 function openTrip(id){
   state.currentTripId = id;
   state.view = 'trip';
-  // 切換到不同行程時，把「新增項目」用的暫存草稿清空。
-  // 這些草稿原本是整個 App 共用、不是跟著行程分開存的，
-  // 如果不清空，換到別的行程時，上一趟行程用過的幣別/類別/付款方式
-  // 這些草稿值會殘留下來，讓人誤以為是這趟行程自動記住的。
-  ui.newItem = {};
   render();
 }
 
 function renderModals(){
   let html = '';
-
-  // 固定在畫面上的同步狀態提示：不管捲動到哪裡都看得到，
-  // 只有在真的「同步中」才會出現，同步完成後會自動消失，
-  // 不需要每上傳一張照片就跳出一次警示視窗打斷操作。
-  if(isSyncing && currentUser){
-    html += `
-      <div class="floating-sync-badge">
-        <span class="floating-sync-dot"></span>
-        雲端同步中，請稍等一下再離開…
-      </div>
-    `;
-  }
 
   if(ui.confirm){
     html += `
@@ -3559,27 +3385,6 @@ function render(){
     });
   }
 }
-
-/* 頁面重新變成可見時（例如切換分頁回來、從背景切回、手機切完相簿回來），
-   先強制跟雲端拿一次最新資料，再讓使用者繼續編輯。
-   這是為了避免「某個分頁/裝置閒置很久沒關，資料其實已經過時，
-   結果使用者回來隨手一改，就把其他裝置這段時間做的變更整個蓋掉」
-   這種多裝置編輯時特別容易發生的問題。 */
-document.addEventListener('visibilitychange', () => {
-  // 加一個冷卻時間判斷：如果最近幾秒內才剛同步過（例如剛登入時，
-  // 登入本身觸發的同步跟這個監聽器可能會前後腳一起觸發，變成
-  // 重複做兩次同步、白白拖慢速度），這裡就先跳過，不用重複執行。
-  const recentlySync = (Date.now() - lastSyncTriggerTime) < 5000;
-  if (document.visibilityState === 'visible' && currentUser && !isUserBusy() && !isRemoteUpdating && !recentlySync) {
-    syncFromSupabase(false);
-  }
-});
-window.addEventListener('focus', () => {
-  const recentlySync = (Date.now() - lastSyncTriggerTime) < 5000;
-  if (currentUser && !isUserBusy() && !isRemoteUpdating && !recentlySync) {
-    syncFromSupabase(false);
-  }
-});
 
 /* 程式進入點 */
 document.addEventListener('DOMContentLoaded', () => {
