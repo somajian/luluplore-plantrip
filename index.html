@@ -2059,12 +2059,33 @@ function deleteItem(catId, itemId){
   const items = trip.categories[catId].items;
   const item = items.find(i=>i.id===itemId);
   const label = item && item.text ? `「${item.text}」` : '這個項目';
-  showModal(`確定要刪除${label}嗎？刪除後無法復原。`, '刪除', ()=>{
+  showModal(`確定要刪除${label}嗎？刪除後無法復原。`, '刪除', async ()=>{
     const t = state.trips.find(t=>t.id===state.currentTripId);
     if(!t) return;
     t.categories[catId].items = t.categories[catId].items.filter(i=>i.id!==itemId);
-    scheduleSave();
     render();
+    saveLocalCache(state.trips);
+
+    let ok = false;
+    if(currentUser){
+      beginSyncing();
+      try{
+        const { data: rpcSuccess, error: rpcError } = await supabaseClient.rpc('delete_item', {
+          p_trip_id: t.id,
+          p_cat_id: catId,
+          p_item_id: itemId
+        });
+        if(!rpcError && rpcSuccess === true){
+          ok = true;
+          t.updated_at = new Date().toISOString();
+          saveLocalCache(state.trips);
+        }
+      }catch(err){
+        console.warn('精準刪除項目失敗，改用整包存檔方式:', err);
+      }
+      endSyncing();
+    }
+    if(!ok) scheduleSave();
   });
 }
 
@@ -2076,15 +2097,19 @@ function normalizeUrl(url){
 }
 
 function deleteItemLink(catId, itemId){
-  showModal('確定要刪除這個連結嗎？刪除後可以再貼上新的連結。', '刪除連結', ()=>{
+  showModal('確定要刪除這個連結嗎？刪除後可以再貼上新的連結。', '刪除連結', async ()=>{
     const trip = state.trips.find(t=>t.id===state.currentTripId);
     if(!trip) return;
     const item = trip.categories[catId].items.find(i=>i.id===itemId);
     if(item){
       item.link = '';
-      scheduleSave();
+      render();
+      saveLocalCache(state.trips);
+      const ok = await saveItemFieldFast(trip, catId, itemId, 'link', '');
+      if(!ok) scheduleSave();
+    } else {
+      render();
     }
-    render();
   });
 }
 
@@ -2180,41 +2205,83 @@ function deleteBatchSelected(catId){
   });
 }
 
-function moveSingleItemSubgroup(catId, itemId, target){
+async function moveSingleItemSubgroup(catId, itemId, target){
   const trip = state.trips.find(t=>t.id===state.currentTripId);
   if(!trip) return;
   const item = trip.categories[catId].items.find(i=>i.id===itemId);
   if(item){
     item.subgroup = target;
-    scheduleSave();
     render();
+    saveLocalCache(state.trips);
+    const ok = await saveItemFieldFast(trip, catId, itemId, 'subgroup', target);
+    if(!ok) scheduleSave();
   }
 }
 
-function toggleItem(catId, itemId){
+// 共用的「精準更新單一欄位」輔助函式：打勾、編輯文字/金額/連結等
+// 欄位都會用到，只傳這一個欄位的新值給資料庫，不用把整個分類
+// （包含所有已經存過的照片）重新送一次。如果精準更新失敗（例如
+// SQL 函式還沒設定好、或項目太新還沒同步到雲端），會回傳 false，
+// 呼叫的地方要負責改用原本整包存檔的方式，確保資料一定存得進去。
+async function saveItemFieldFast(trip, catId, itemId, field, value){
+  if(!currentUser) return false;
+  beginSyncing();
+  let ok = false;
+  try{
+    const { data: rpcSuccess, error: rpcError } = await supabaseClient.rpc('update_item_field', {
+      p_trip_id: trip.id,
+      p_cat_id: catId,
+      p_item_id: itemId,
+      p_field: field,
+      p_value: value
+    });
+    if(!rpcError && rpcSuccess === true){
+      ok = true;
+      trip.updated_at = new Date().toISOString();
+      saveLocalCache(state.trips);
+    }
+  }catch(err){
+    console.warn('精準更新欄位失敗，改用整包存檔方式:', err);
+  }
+  endSyncing();
+  return ok;
+}
+
+async function toggleItem(catId, itemId){
   const trip = state.trips.find(t=>t.id===state.currentTripId);
   if(!trip) return;
   const item = trip.categories[catId].items.find(i=>i.id===itemId);
   if(item){
     item.checked = !item.checked;
-    scheduleSave();
     render();
+    saveLocalCache(state.trips);
+    const ok = await saveItemFieldFast(trip, catId, itemId, 'checked', item.checked);
+    if(!ok) scheduleSave();
   }
 }
 
-function updateItem(catId, itemId, key, val){
+async function updateItem(catId, itemId, key, val){
   const trip = state.trips.find(t=>t.id===state.currentTripId);
   if(!trip) return;
   const item = trip.categories[catId].items.find(i=>i.id===itemId);
   if(item){
     item[key] = val;
-    if(catId === 'expenses' && key === 'date'){
+    const isExpenseDateChange = (catId === 'expenses' && key === 'date');
+    if(isExpenseDateChange){
       sortExpenseItemsByDate(trip);
     }
-    scheduleSave();
-    if(key === 'currency' || key === 'payment' || key === 'category' || (catId === 'expenses' && key === 'date')){
+    if(key === 'currency' || key === 'payment' || key === 'category' || isExpenseDateChange){
       render();
     }
+    saveLocalCache(state.trips);
+
+    // 花費與記帳的日期變動，因為會重新排序整個清單、不是單純改
+    // 一個欄位，沒辦法用精準更新，維持原本整包存檔的方式。
+    let ok = false;
+    if(!isExpenseDateChange){
+      ok = await saveItemFieldFast(trip, catId, itemId, key, val);
+    }
+    if(!ok) scheduleSave();
   }
 }
 
