@@ -3189,12 +3189,34 @@ function processImageUpload(catId, itemId, file){
           compressed = e.target.result;
         }
 
-        // 直接把壓縮後的照片存進項目資料裡（回到最單純快速的做法），
-        // 只送「這一趟行程」、不用等一般存檔用的 0.6 秒防抖動延遲，
-        // 讓速度就是「壓縮 + 一次存檔」這樣單純的過程，不再多繞路。
+        // 照片先上傳到獨立的雲端檔案空間（trip-photos），
+        // 取得網址後，只把這個很短的網址存進行程資料裡——
+        // 不再把整張照片內容直接塞進行程資料，這樣不管上傳幾張
+        // 照片，行程本身的資料永遠都維持輕薄，不會再越用越肥、
+        // 越肥越慢。如果雲端檔案空間上傳失敗（例如網路問題），
+        // 才會退回「直接把照片內容存進行程資料」這個備用做法，
+        // 確保照片至少還是加得進去。
+        let imageToSave = compressed;
+        if(currentUser){
+          try{
+            const blob = await (await fetch(compressed)).blob();
+            const filePath = `${currentUser.id}/${itemId}-${Date.now()}.jpg`;
+            const { error: uploadError } = await supabaseClient.storage
+              .from('trip-photos')
+              .upload(filePath, blob, { contentType: 'image/jpeg', upsert: true });
+            if(uploadError) throw uploadError;
+            const { data: urlData } = supabaseClient.storage
+              .from('trip-photos')
+              .getPublicUrl(filePath);
+            imageToSave = urlData.publicUrl;
+          }catch(uploadErr){
+            console.warn('照片上傳到雲端檔案空間失敗，改用直接存檔方式:', uploadErr);
+          }
+        }
+
         const uploadTrip = state.trips.find(t => t.id === state.currentTripId);
         const uploadItem = uploadTrip && uploadTrip.categories[catId] && uploadTrip.categories[catId].items.find(i => i.id === itemId);
-        if(uploadItem){ uploadItem.image = compressed; }
+        if(uploadItem){ uploadItem.image = imageToSave; }
 
         if(uploadTrip && currentUser){
           uploadingImageIds.add(itemId);
@@ -3205,18 +3227,16 @@ function processImageUpload(catId, itemId, file){
           uploadTrip.updated_at = new Date().toISOString();
           saveLocalCache(state.trips);
           if(currentUser){
-            // 優先用「精準局部更新」的方式送照片，只傳這一張照片本身
-            // 給資料庫，不用把整趟行程的資料都重新送一次——這樣不管
-            // 這趟行程已經存了幾張照片，每次上傳新照片要傳的量都只有
-            // 這一張的大小。如果這個資料庫函式還沒設定好（還沒跑過
-            // 對應的 SQL），會自動退回原本「整包送」的方式，
-            // 確保照片還是存得進去，只是速度會比較慢一點。
+            // 用「精準局部更新」的方式送照片（或照片網址），只傳這一筆
+            // 資料本身給資料庫，不用把整趟行程的資料都重新送一次。
+            // 如果這個資料庫函式還沒設定好，會自動退回原本「整包送」
+            // 的方式，確保照片還是存得進去，只是速度會比較慢一點。
             try{
               const { data: rpcSuccess, error: rpcError } = await supabaseClient.rpc('update_item_image', {
                 p_trip_id: uploadTrip.id,
                 p_cat_id: catId,
                 p_item_id: itemId,
-                p_image_data: compressed
+                p_image_data: imageToSave
               });
               // 就算沒有報錯，如果回傳的不是 true，也代表資料庫那邊
               // 找不到這個項目可以更新（很可能是新增的分類群組、新增
