@@ -3171,13 +3171,17 @@ function processImageUpload(catId, itemId, file){
             // 對應的 SQL），會自動退回原本「整包送」的方式，
             // 確保照片還是存得進去，只是速度會比較慢一點。
             try{
-              const { error: rpcError } = await supabaseClient.rpc('update_item_image', {
+              const { data: rpcSuccess, error: rpcError } = await supabaseClient.rpc('update_item_image', {
                 p_trip_id: uploadTrip.id,
                 p_cat_id: catId,
                 p_item_id: itemId,
                 p_image_data: compressed
               });
-              if(rpcError) throw rpcError;
+              // 就算沒有報錯，如果回傳的不是 true，也代表資料庫那邊
+              // 找不到這個項目可以更新（很可能是新增的分類群組、新增
+              // 的項目還沒同步到雲端），這種情況一樣要當作失敗、
+              // 改用下面完整存檔的方式，不能只看有沒有錯誤訊息。
+              if(rpcError || rpcSuccess !== true) throw (rpcError || new Error('精準更新找不到對應項目，可能是新項目還沒同步到雲端'));
             }catch(rpcErr){
               console.warn('精準局部更新失敗，改用整包存檔方式:', rpcErr);
               await saveToSupabase([uploadTrip]);
