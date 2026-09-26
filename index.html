@@ -1138,9 +1138,6 @@ function saveLocalCache(trips){
 let isPickingImage = false;
 // 記錄目前正在上傳到雲端檔案空間的項目 id，讓畫面上可以顯示「上傳中」提示。
 let uploadingImageIds = new Set();
-// 這次瀏覽階段裡，雲端檔案空間（trip-photos）如果連不上，只提醒一次，
-// 不要每張照片都跳警示，畢竟照片本身還是會用備用方式正常存好。
-let cloudPhotoStorageWarned = false;
 function isUserBusy(){
   if(isPickingImage) return true;
   // 照片還在壓縮/上傳到雲端檔案空間的整個過程中，都算「忙碌中」——
@@ -3167,7 +3164,24 @@ function processImageUpload(catId, itemId, file){
           uploadTrip.updated_at = new Date().toISOString();
           saveLocalCache(state.trips);
           if(currentUser){
-            await saveToSupabase([uploadTrip]);
+            // 優先用「精準局部更新」的方式送照片，只傳這一張照片本身
+            // 給資料庫，不用把整趟行程的資料都重新送一次——這樣不管
+            // 這趟行程已經存了幾張照片，每次上傳新照片要傳的量都只有
+            // 這一張的大小。如果這個資料庫函式還沒設定好（還沒跑過
+            // 對應的 SQL），會自動退回原本「整包送」的方式，
+            // 確保照片還是存得進去，只是速度會比較慢一點。
+            try{
+              const { error: rpcError } = await supabaseClient.rpc('update_item_image', {
+                p_trip_id: uploadTrip.id,
+                p_cat_id: catId,
+                p_item_id: itemId,
+                p_image_data: compressed
+              });
+              if(rpcError) throw rpcError;
+            }catch(rpcErr){
+              console.warn('精準局部更新失敗，改用整包存檔方式:', rpcErr);
+              await saveToSupabase([uploadTrip]);
+            }
           }
         }
         uploadingImageIds.delete(itemId);
