@@ -830,7 +830,7 @@ input,textarea,select{font-family:inherit;}
 <input type="file" id="import-input" accept="application/json" style="display:none;">
 
 <script>
-/* Luluplore stable photo-storage build: old stable UI + Storage URL photos */
+/* Luluplore photo fix v2: visible upload state + item-only image URL update + no auto migration */
 /* ===================== Supabase 設定與初始化 ===================== */
 const SUPABASE_URL = "https://jgftnhhddhsblkgsrfvd.supabase.co";
 const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpnZnRuaGhkZGhzYmxrZ3NyZnZkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODczMDAwNzksImV4cCI6MjEwMjg3NjA3OX0.eDtdPg2JGMP8HwKDEaeXCZqNUvBDdObe9IpWdaN6LlU";
@@ -1543,8 +1543,8 @@ supabaseClient.auth.onAuthStateChange((event, session) => {
 
         await loadFromSupabase();
         subscribeRealtime();
-        // 不等待搬移完成：舊 Base64 照片在背景慢慢搬，不拖慢登入與一般編輯。
-        setTimeout(() => { migrateLegacyBase64Photos(); }, 1200);
+        // v2：暫停自動搬移舊 Base64 照片。
+        // 先確保新照片上傳與一般編輯完全穩定，避免背景 migration 同時改寫行程資料。
       } catch (err) {
         console.error('Auth sync initialization error:', err);
         showToast('登入成功，但雲端同步初始化失敗：' + (err.message || '未知錯誤'), true);
@@ -2827,10 +2827,7 @@ function renderItemBlock(trip, cat, item, idx){
           ${PHOTO_ENABLED_CATEGORY_IDS.includes(cat.id) ? `
             <div class="item-photo-block">
               <div class="shopping-img-wrap" onclick="triggerImageUpload('${item.id}')">
-                ${item.image
-                  ? `<img src="${escapeAttr(item.image)}" alt="附加照片" onclick="event.stopPropagation(); openImageModal('${escapeJsAttr(item.image)}')">
-                     <button type="button" class="shopping-img-edit-btn" onclick="event.stopPropagation(); triggerImageUpload('${item.id}')" title="更換照片">✎</button>`
-                  : `<div class="shopping-img-placeholder">+ 新增照片<br>（例如訂單確認信）</div>`}
+                ${renderImageUploadBox(item, item.id, '附加照片')}
               </div>
               <input type="file" id="img-input-${item.id}" class="img-upload-input" accept="image/*" onchange="handleImageUpload('${cat.id}', '${item.id}', event)">
             </div>
@@ -2855,10 +2852,7 @@ function renderShoppingCard(trip, cat, item) {
   return `
     <div class="shopping-card ${isDone ? 'done' : ''}">
       <div class="shopping-img-wrap" onclick="triggerImageUpload('${item.id}')">
-        ${item.image
-          ? `<img src="${escapeAttr(item.image)}" alt="商品照片" onclick="event.stopPropagation(); openImageModal('${escapeJsAttr(item.image)}')">
-             <button type="button" class="shopping-img-edit-btn" onclick="event.stopPropagation(); triggerImageUpload('${item.id}')" title="更換照片">✎</button>`
-          : `<div class="shopping-img-placeholder">+ 新增照片</div>`}
+        ${renderImageUploadBox(item, item.id, '商品照片')}
       </div>
       <input type="file" id="img-input-${item.id}" class="img-upload-input" accept="image/*" onchange="handleImageUpload('${cat.id}', '${item.id}', event)">
       <div style="display:flex;align-items:center;gap:4px;">
@@ -2949,6 +2943,21 @@ function deleteSubgroup(catId, subgroupName){
   });
 }
 
+
+function renderImageUploadBox(item, itemId, altText='附加照片'){
+  const uploading = uploadingImageIds.has(itemId);
+  if(uploading){
+    return `<div class="shopping-img-placeholder" style="display:flex;align-items:center;justify-content:center;text-align:center;min-height:100%;font-weight:700;">
+      ⏳ 照片上傳中…<br><span style="font-size:10px;font-weight:400;margin-top:4px;">請先不要關閉頁面</span>
+    </div>`;
+  }
+  if(item.image){
+    return `<img src="${escapeAttr(item.image)}" alt="${escapeAttr(altText)}" onclick="event.stopPropagation(); openImageModal('${escapeJsAttr(item.image)}')">
+      <button type="button" class="shopping-img-edit-btn" onclick="event.stopPropagation(); triggerImageUpload('${itemId}')" title="更換照片">✎</button>`;
+  }
+  return `<div class="shopping-img-placeholder">+ 新增照片</div>`;
+}
+
 function triggerImageUpload(itemId){
   const el = document.getElementById(`img-input-${itemId}`);
   if(el){
@@ -3034,6 +3043,28 @@ async function uploadPhotoBlob(blob, tripId, catId, itemId){
   return data.publicUrl;
 }
 
+
+async function saveOnlyItemImage(trip, catId, itemId, publicUrl){
+  // 第一選擇：只更新單一 item 的 image 欄位。
+  // 這避免一張照片就把整個 categories JSON（尤其舊 Base64 圖片）重新傳一次。
+  try{
+    const { data, error } = await supabaseClient.rpc('update_item_image', {
+      p_trip_id: trip.id,
+      p_cat_id: catId,
+      p_item_id: itemId,
+      p_image_data: publicUrl
+    });
+    if(!error && data === true) return true;
+    if(error) console.warn('單一照片網址更新 RPC 失敗，改用目前行程同步:', error);
+    else console.warn('單一照片網址更新 RPC 未回傳 true，改用目前行程同步:', data);
+  }catch(err){
+    console.warn('單一照片網址更新 RPC 發生例外，改用目前行程同步:', err);
+  }
+
+  // 相容保險：如果舊站沒有 RPC，才退回同步目前這一趟（不會同步所有行程）。
+  return await saveToSupabase([trip]);
+}
+
 async function processImageUpload(catId, itemId, file){
   const trip = state.trips.find(t => t.id === state.currentTripId);
   const item = trip && trip.categories[catId] && trip.categories[catId].items.find(i => i.id === itemId);
@@ -3049,12 +3080,11 @@ async function processImageUpload(catId, itemId, file){
       // 登入模式：照片本體只進 Storage；行程 JSON 永遠只存短網址。
       // Storage 成功前不覆蓋舊照片，因此上傳失敗也不會把原照片弄丟。
       const publicUrl = await uploadPhotoBlob(blob, trip.id, catId, itemId);
+      // Storage 成功後才把畫面換成正式照片 URL。
       item.image = publicUrl;
       trip.updated_at = new Date().toISOString();
 
-      // 照片 URL 已經很小，這裡只同步目前這一趟行程一次。
-      // 不需要 RPC，也不會因 RPC 失敗再反覆整包重傳。
-      const ok = await saveToSupabase([trip]);
+      const ok = await saveOnlyItemImage(trip, catId, itemId, publicUrl);
       if(!ok) throw new Error('照片已上傳，但行程資料尚未成功記錄照片網址');
       showToast('照片已安全存到雲端');
     } else {
@@ -3067,7 +3097,7 @@ async function processImageUpload(catId, itemId, file){
   } catch(err){
     console.error('照片處理失敗:', err);
     const msg = (err && err.message) ? err.message : '未知錯誤';
-    showToast('照片上傳失敗：' + msg + '。原本的照片/資料不會被刪除，請稍後再試。', true);
+    showToast('照片尚未完成儲存：' + msg + '。原本的照片/資料不會被刪除，請稍後再試。', true);
   } finally {
     uploadingImageIds.delete(itemId);
     render();
