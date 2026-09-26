@@ -1296,6 +1296,7 @@ async function signOut() {
 
   currentUser = null;
   endSyncing();
+  hasLoadedTripsForSession = false;
 
   // 登出後把這台裝置上的資料快取也一併清掉，避免帳號的行程資料
   // 繼續留在裝置上（例如公用電腦、借用他人手機的情況）。
@@ -1644,9 +1645,26 @@ async function syncFromSupabase(isRealtimeTrigger = false) {
 }
 
 /* 監聽 Auth 狀態 */
+let hasLoadedTripsForSession = false;
+
 supabaseClient.auth.onAuthStateChange((event, session) => {
   if (session && session.user) {
     currentUser = session.user;
+
+    // Supabase 的登入狀態監聽器，在頁面載入時常常會觸發不只一次
+    // （例如「偵測到已有登入」、「背景權杖更新」都算不同事件，
+    // 但都會帶著有效的登入狀態），如果每次觸發都整包重新抓一次
+    // 所有行程資料，就會變成同一個網頁裡短時間內重複查詢好幾次，
+    // 資料傳輸量疊加起來，才會一直卡在「同步中」。
+    // 這裡改成：這次瀏覽階段只要完整載入過一次，之後除非是真的
+    // 重新登入（SIGNED_IN），不然不會再重複整包抓取。
+    const needsFullLoad = !hasLoadedTripsForSession || event === 'SIGNED_IN';
+
+    if (!needsFullLoad) {
+      if(!isUserBusy()) render();
+      return;
+    }
+    hasLoadedTripsForSession = true;
 
     setTimeout(async () => {
       try {
