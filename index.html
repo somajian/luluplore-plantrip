@@ -856,6 +856,7 @@ Object.defineProperty(globalThis, 'isSyncing', {
 });
 let realtimeChannel = null;
 let isRemoteUpdating = false;
+let lastSyncTriggerTime = 0;
 let remoteUpdatingWatchdog = null;
 // 設定 isRemoteUpdating 的保險機制：只要設成 true，就會同時安排一個
 // 最多 8 秒後自動解鎖的保險計時器。正常情況下，各個存檔/同步函式
@@ -1446,6 +1447,7 @@ async function loadFromSupabase() {
 
 async function syncFromSupabase(isRealtimeTrigger = false) {
   if (!currentUser) return;
+  lastSyncTriggerTime = Date.now();
 
   if (!isRealtimeTrigger) {
     beginSyncing();
@@ -3149,43 +3151,12 @@ function processImageUpload(catId, itemId, file){
           compressed = e.target.result;
         }
 
-        // 混合策略：優先嘗試把照片上傳到「獨立的雲端檔案空間」
-        // （這樣行程資料本身只會記一個網址，不會越存越大、越存越慢）。
-        // 但設一個 4 秒的時間限制，超過就立刻放棄、改用原本快速可靠的
-        // 「直接把照片存進行程資料」方式，不會讓使用者傻等。
-        let uploadedUrl = null;
-        if(currentUser){
-          try{
-            const blob = await (await fetch(compressed)).blob();
-            const filePath = `${currentUser.id}/${itemId}-${Date.now()}.jpg`;
-            const uploadPromise = supabaseClient.storage
-              .from('trip-photos')
-              .upload(filePath, blob, { contentType: 'image/jpeg', upsert: true });
-            const timeoutPromise = new Promise((_, reject) =>
-              setTimeout(() => reject(new Error('雲端檔案空間逾時')), 4000)
-            );
-            const { error } = await Promise.race([uploadPromise, timeoutPromise]);
-            if(error) throw error;
-            const { data: urlData } = supabaseClient.storage
-              .from('trip-photos')
-              .getPublicUrl(filePath);
-            uploadedUrl = urlData.publicUrl;
-          }catch(err){
-            // 上傳到獨立空間失敗或逾時，安靜地改用下面的備用方式，
-            // 只在這次瀏覽階段第一次遇到時提醒一次，不用每張照片都講。
-            console.warn('雲端檔案空間上傳失敗/逾時，改用直接存檔方式:', err);
-            if(!cloudPhotoStorageWarned){
-              cloudPhotoStorageWarned = true;
-              showToast('雲端相簿空間目前連不上，已自動改用備用方式儲存照片（不影響照片保存，僅供技術排查參考）', true);
-            }
-          }
-        }
-
-        // 直接把壓縮後的照片（或上面成功拿到的雲端網址）存進項目資料裡，
-        // 只送「這一趟行程」、也不用等一般存檔用的 0.6 秒防抖動延遲。
+        // 直接把壓縮後的照片存進項目資料裡（回到最單純快速的做法），
+        // 只送「這一趟行程」、不用等一般存檔用的 0.6 秒防抖動延遲，
+        // 讓速度就是「壓縮 + 一次存檔」這樣單純的過程，不再多繞路。
         const uploadTrip = state.trips.find(t => t.id === state.currentTripId);
         const uploadItem = uploadTrip && uploadTrip.categories[catId] && uploadTrip.categories[catId].items.find(i => i.id === itemId);
-        if(uploadItem){ uploadItem.image = uploadedUrl || compressed; }
+        if(uploadItem){ uploadItem.image = compressed; }
 
         if(uploadTrip && currentUser){
           uploadingImageIds.add(itemId);
@@ -3516,12 +3487,17 @@ function render(){
    結果使用者回來隨手一改，就把其他裝置這段時間做的變更整個蓋掉」
    這種多裝置編輯時特別容易發生的問題。 */
 document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'visible' && currentUser && !isUserBusy() && !isRemoteUpdating) {
+  // 加一個冷卻時間判斷：如果最近幾秒內才剛同步過（例如剛登入時，
+  // 登入本身觸發的同步跟這個監聽器可能會前後腳一起觸發，變成
+  // 重複做兩次同步、白白拖慢速度），這裡就先跳過，不用重複執行。
+  const recentlySync = (Date.now() - lastSyncTriggerTime) < 5000;
+  if (document.visibilityState === 'visible' && currentUser && !isUserBusy() && !isRemoteUpdating && !recentlySync) {
     syncFromSupabase(false);
   }
 });
 window.addEventListener('focus', () => {
-  if (currentUser && !isUserBusy() && !isRemoteUpdating) {
+  const recentlySync = (Date.now() - lastSyncTriggerTime) < 5000;
+  if (currentUser && !isUserBusy() && !isRemoteUpdating && !recentlySync) {
     syncFromSupabase(false);
   }
 });
