@@ -2217,24 +2217,36 @@ function applyBulk(catId){
   const catData_hasSubgroups = !!(tripCatData && tripCatData.subgroups && tripCatData.subgroups.length > 0);
 
   if(catDef.type === 'itinerary'){
-    // 單獨一行的「Day 1」「D1」「第1天」會被當成標題，不會自己變成一筆項目，
-    // 底下的每一行都會自動歸類到這個 Day，直到遇到下一個 Day 標題為止。
+    // 單獨一行的「Day 1」「D1」「第1天」，或是單獨一行的日期
+    // （例如 9/27、2026/9/27）都會被當成標題，不會自己變成一筆項目，
+    // 底下的每一行都會自動歸類到這個標題，直到遇到下一個標題為止。
     let currentDay = '';
     const dayHeaderRe = /^(Day\s*\d+|D\d+|第\s*\d+\s*天)$/i;
     const dayInlineRe = /^(Day\s*\d+|D\d+|第\s*\d+\s*天)\s*[:：\s]+(.+)/i;
+    const dateInlineRe = /^(\d{1,2}[\/\-]\d{1,2}|\d{4}[\/\-]\d{1,2}[\/\-]\d{1,2})\s*[:：\s]+(.+)/;
     lines.forEach(line=>{
       const headerMatch = line.match(dayHeaderRe);
       if(headerMatch){
         currentDay = headerMatch[1].trim();
         return;
       }
+      if(isWholeDateLine(line)){
+        currentDay = line.trim();
+        return;
+      }
       const inlineMatch = line.match(dayInlineRe);
       if(inlineMatch){
         currentDay = inlineMatch[1].trim();
         addItem(catId, { text: inlineMatch[2].trim(), day: currentDay });
-      } else {
-        addItem(catId, { text: line, day: currentDay });
+        return;
       }
+      const dateInlineMatch = line.match(dateInlineRe);
+      if(dateInlineMatch){
+        currentDay = dateInlineMatch[1].trim();
+        addItem(catId, { text: dateInlineMatch[2].trim(), day: currentDay });
+        return;
+      }
+      addItem(catId, { text: line, day: currentDay });
     });
   } else {
     const targetSubgroup = (catData_hasSubgroups) ? (ui.bulkSubgroupTarget[catId] || '') : undefined;
