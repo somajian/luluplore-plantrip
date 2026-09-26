@@ -1974,7 +1974,7 @@ function sortExpenseItemsByDate(trip){
   trip.categories.expenses.items = withIndex.map(x => x.item);
 }
 
-function addItem(catId, itemData = {}){
+async function addItem(catId, itemData = {}){
   const trip = state.trips.find(t=>t.id===state.currentTripId);
   if(!trip) return;
   
@@ -2014,8 +2014,43 @@ function addItem(catId, itemData = {}){
 
   ui.newItem[catId] = { text:'', amount:'', currency: draft.currency || '', category:'吃', payment:'現金', date:'', day:'', note:'', link:'', subgroup: resolvedSubgroup };
   
-  scheduleSave();
   render();
+  saveLocalCache(state.trips);
+
+  // 新增項目改用「精準附加」的方式存檔，只傳這一筆新項目的資料給
+  // 資料庫，不用把這個分類裡所有舊資料（包含已經存過的照片）重新
+  // 送一次。不管是機票、住宿、行程路線規劃、花費與記帳、購物清單、
+  // 行李清單，只要是「新增一筆項目」，都走這條快速路徑。
+  //
+  // 補充說明花費與記帳的情況：這個分類新增後，畫面上看到的順序
+  // 還是會照日期正確排序（因為排序是在你自己這台裝置上、當下就做
+  // 好的），但雲端資料庫裡暫時只會是「新增的先後順序」，要等下一次
+  // 有其他變動觸發完整存檔時，雲端的順序才會跟著更新——這只是雲端
+  // 資料庫裡「暫存的排列順序」跟畫面顯示不同步一下下，不會有任何
+  // 資料遺失或消失的風險。
+  let usedFastPath = false;
+  if(currentUser){
+    beginSyncing();
+    try{
+      const { data: rpcSuccess, error: rpcError } = await supabaseClient.rpc('append_item', {
+        p_trip_id: trip.id,
+        p_cat_id: catId,
+        p_item: newItemObj
+      });
+      if(!rpcError && rpcSuccess === true){
+        usedFastPath = true;
+        trip.updated_at = new Date().toISOString();
+        saveLocalCache(state.trips);
+      }
+    }catch(rpcErr){
+      console.warn('精準附加新增項目失敗，改用整包存檔方式:', rpcErr);
+    }
+    endSyncing();
+  }
+
+  if(!usedFastPath){
+    scheduleSave();
+  }
 }
 
 function deleteItem(catId, itemId){
@@ -3070,7 +3105,7 @@ function toggleSubgroupCollapse(catId, subgroup){
   render();
 }
 
-function addSubgroup(catId){
+async function addSubgroup(catId){
   const trip = state.trips.find(t=>t.id===state.currentTripId);
   if(!trip) return;
   const inputEl = document.getElementById(`new-group-input-${catId}`);
@@ -3091,9 +3126,35 @@ function addSubgroup(catId){
 
   trip.categories[catId].subgroups.push(newGroup);
   inputEl.value = '';
-  scheduleSave();
   render();
+  saveLocalCache(state.trips);
   showToast(`已新增群組「${newGroup}」`);
+
+  // 跟新增項目一樣，改用「精準附加」的方式存檔，只送這一個新的
+  // 群組名稱，不用把整個分類（包含所有已經存過的照片）重新送一次。
+  let usedFastPath = false;
+  if(currentUser){
+    beginSyncing();
+    try{
+      const { data: rpcSuccess, error: rpcError } = await supabaseClient.rpc('append_subgroup', {
+        p_trip_id: trip.id,
+        p_cat_id: catId,
+        p_subgroup: newGroup
+      });
+      if(!rpcError && rpcSuccess === true){
+        usedFastPath = true;
+        trip.updated_at = new Date().toISOString();
+        saveLocalCache(state.trips);
+      }
+    }catch(rpcErr){
+      console.warn('精準附加新增群組失敗，改用整包存檔方式:', rpcErr);
+    }
+    endSyncing();
+  }
+
+  if(!usedFastPath){
+    scheduleSave();
+  }
 }
 
 function renameSubgroup(catId, oldName, newName){
