@@ -1204,6 +1204,8 @@ let ui = {
   confirm: null,
   toast: null,
   shareModal: false,
+  // 開啟協作視窗時鎖定當下的行程 ID，避免背景同步/重繪改變 currentTripId 後寫到別趟行程
+  shareTripId: null,
   modalImageSrc: null,
   collaboratorEmail: '',
   shareCollaborators: [],
@@ -2680,7 +2682,7 @@ function renderTripDetail(){
       <div class="th-top-actions">
         <button class="back-btn" onclick="state.view='list';render();">← 返回行程列表</button>
         <div class="th-top-right">
-          ${currentUser ? `<button class="btn-auth" onclick="openShareModal()">🔗 共用與協作</button>` : ''}
+          ${isOwner && currentUser ? `<button class="btn-auth" onclick="openShareModal()">🔗 共用與協作</button>` : ''}
           <button class="trip-delete-lg" onclick="deleteTrip('${trip.id}')">刪除此行程</button>
         </div>
       </div>
@@ -3413,7 +3415,7 @@ function renderModals(){
   }
 
   if(ui.shareModal){
-    const trip = state.trips.find(t=>t.id===state.currentTripId);
+    const trip = state.trips.find(t=>t.id===ui.shareTripId);
     const shareUrl = `${window.location.origin}${window.location.pathname}?trip_id=${trip ? trip.id : ''}`;
 
     html += `
@@ -3453,7 +3455,7 @@ function renderModals(){
           </details>
 
           <div class="modal-btns">
-            <button class="modal-btn" onclick="ui.shareModal=false;render();">關閉</button>
+            <button class="modal-btn" onclick="ui.shareModal=false;ui.shareTripId=null;render();">關閉</button>
           </div>
         </div>
       </div>
@@ -3470,24 +3472,67 @@ function renderModals(){
 }
 
 async function openShareModal(){
+  const trip = state.trips.find(t=>t.id===state.currentTripId);
+  if(!trip || !currentUser){
+    showToast('找不到目前行程或尚未登入', true);
+    return;
+  }
+  // 協作名單只能由真正 owner 管理；editor 不顯示/不可操作協作設定。
+  if(trip.user_id !== currentUser.id){
+    showToast('只有這趟行程的建立者可以管理協作者', true);
+    return;
+  }
+  // 關鍵安全修正：開啟視窗時就鎖定 trip id，後續讀/寫/刪都只用這個 ID，
+  // 不再依賴可能被背景同步或畫面切換改變的 state.currentTripId。
+  ui.shareTripId = trip.id;
   ui.shareModal = true;
   ui.shareCollaborators = [];
   render();
   await loadTripCollaborators();
 }
 
+async function getLockedShareTrip(){
+  if(!currentUser || !ui.shareTripId) return null;
+  const lockedId = ui.shareTripId;
+  const localTrip = state.trips.find(t=>t.id===lockedId);
+  if(!localTrip || localTrip.user_id !== currentUser.id) return null;
+
+  // 寫入前再向 Supabase 確認一次 owner，避免任何前端 stale state 把協作者寫到錯的 trip。
+  const { data, error } = await supabaseClient
+    .from('trips')
+    .select('id,user_id')
+    .eq('id', lockedId)
+    .eq('user_id', currentUser.id)
+    .maybeSingle();
+  if(error) throw error;
+  if(!data || data.user_id !== currentUser.id) return null;
+  return localTrip;
+}
+
 async function loadTripCollaborators(){
-  const trip = state.trips.find(t=>t.id===state.currentTripId);
-  if(!trip || !currentUser){ return; }
+  const lockedId = ui.shareTripId;
+  if(!lockedId || !currentUser){ return; }
+  const localTrip = state.trips.find(t=>t.id===lockedId);
+  if(!localTrip || localTrip.user_id !== currentUser.id){
+    ui.shareModal = false;
+    ui.shareTripId = null;
+    showToast('只有行程建立者可以查看協作者清單', true);
+    render();
+    return;
+  }
   ui.shareCollaboratorsLoading = true;
   render();
   try{
     const { data, error } = await supabaseClient
       .from('trip_collaborators')
       .select('email')
-      .eq('trip_id', trip.id);
+      .eq('trip_id', lockedId);
     if(error) throw error;
-    ui.shareCollaborators = (data || []).map(r => r.email);
+    // owner 自己若也存在 collaborators 表，不列在「協作者」清單裡。
+    const myEmail = (currentUser.email || '').trim().toLowerCase();
+    ui.shareCollaborators = (data || [])
+      .map(r => (r.email || '').trim().toLowerCase())
+      .filter(email => email && email !== myEmail);
   }catch(e){
     console.error('讀取協作者清單失敗:', e);
     showToast('讀取協作者清單失敗：' + (e.message || '未知錯誤'), true);
@@ -3498,8 +3543,6 @@ async function loadTripCollaborators(){
 }
 
 async function addCollaborator(){
-  const trip = state.trips.find(t=>t.id===state.currentTripId);
-  if(!trip){ return; }
   const email = (ui.collaboratorEmail || '').trim().toLowerCase();
   if(!email || !email.includes('@')){
     showToast('請輸入正確的 Gmail / Email 格式', true);
@@ -3509,11 +3552,26 @@ async function addCollaborator(){
     showToast('請先登入才能新增協作者', true);
     return;
   }
+  if(email === (currentUser.email || '').trim().toLowerCase()){
+    showToast('不用把自己的 Email 加成協作者喔', true);
+    return;
+  }
   try{
+    const trip = await getLockedShareTrip();
+    if(!trip){
+      showToast('安全檢查未通過：目前帳號不是這趟行程的建立者，因此沒有寫入任何協作資料', true);
+      return;
+    }
+    // 再次保存固定值，避免 await 期間任何 UI/state 改變。
+    const lockedTripId = ui.shareTripId;
+    if(!lockedTripId || lockedTripId !== trip.id){
+      showToast('行程狀態已變更，為避免寫錯行程，本次沒有新增協作者。請關閉視窗後重開再試。', true);
+      return;
+    }
     const { error } = await supabaseClient
       .from('trip_collaborators')
       .upsert({
-        trip_id: trip.id,
+        trip_id: lockedTripId,
         email: email,
         role: 'editor'
       }, { onConflict: 'trip_id,email' });
@@ -3528,14 +3586,19 @@ async function addCollaborator(){
 }
 
 function removeCollaborator(email){
-  const trip = state.trips.find(t=>t.id===state.currentTripId);
-  if(!trip) return;
+  const lockedTripId = ui.shareTripId;
+  if(!lockedTripId || !currentUser) return;
   showModal(`確定要取消「${email}」的協作權限嗎？取消後對方將無法再看到或編輯這趟行程。`, '取消協作', async ()=>{
     try{
+      const trip = await getLockedShareTrip();
+      if(!trip || trip.id !== lockedTripId){
+        showToast('安全檢查未通過，因此沒有刪除任何協作資料', true);
+        return;
+      }
       const { error } = await supabaseClient
         .from('trip_collaborators')
         .delete()
-        .eq('trip_id', trip.id)
+        .eq('trip_id', lockedTripId)
         .eq('email', email);
       if(error) throw error;
       showToast(`已取消「${email}」的協作權限`);
