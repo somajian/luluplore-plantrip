@@ -830,7 +830,7 @@ input,textarea,select{font-family:inherit;}
 <input type="file" id="import-input" accept="application/json" style="display:none;">
 
 <script>
-/* Luluplore photo fix v2: visible upload state + item-only image URL update + no auto migration */
+/* Luluplore v3: stable photo storage + collaborator cloud-authoritative merge fix */
 /* ===================== Supabase 設定與初始化 ===================== */
 const SUPABASE_URL = "https://jgftnhhddhsblkgsrfvd.supabase.co";
 const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpnZnRuaGhkZGhzYmxrZ3NyZnZkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODczMDAwNzksImV4cCI6MjEwMjg3NjA3OX0.eDtdPg2JGMP8HwKDEaeXCZqNUvBDdObe9IpWdaN6LlU";
@@ -1367,10 +1367,16 @@ async function syncFromSupabase(isRealtimeTrigger = false) {
 
     if (userTripsErr) throw userTripsErr;
 
-    const { data: collabData, error: collabErr } = await supabaseClient
+    const loginEmail = (currentUser.email || '').trim().toLowerCase();
+    let collabQuery = supabaseClient
       .from('trip_collaborators')
-      .select('trip_id, role')
-      .or(`email.eq.${(currentUser.email || '').toLowerCase()},user_id.eq.${currentUser.id}`);
+      .select('trip_id, role');
+
+    collabQuery = loginEmail
+      ? collabQuery.or(`email.eq.${loginEmail},user_id.eq.${currentUser.id}`)
+      : collabQuery.eq('user_id', currentUser.id);
+
+    const { data: collabData, error: collabErr } = await collabQuery;
 
     if (collabErr) {
       console.warn('Fetch collaborators error:', collabErr);
@@ -1418,6 +1424,7 @@ async function syncFromSupabase(isRealtimeTrigger = false) {
 
     const localMap = new Map((state.trips || []).map(t => [t.id, t]));
     const remoteOwnedMap = new Map(remoteOwned.map(t => [t.id, t]));
+    const remoteSharedMap = new Map(remoteShared.map(t => [t.id, t]));
     const mergedMap = new Map();
 
     remoteOwned.forEach(remoteTrip => {
@@ -1435,27 +1442,23 @@ async function syncFromSupabase(isRealtimeTrigger = false) {
       }
     });
 
+    // 只有真正屬於目前登入者、而且雲端還沒有的本機行程，才可視為 local-only。
+    // 共享行程不能走這段，否則舊快取會蓋掉 Supabase 的真正共享資料。
     const localOnlyTrips = [];
     localMap.forEach((localTrip, id) => {
-      if (!remoteOwnedMap.has(id)) {
-        if (!localTrip.updated_at) {
-          localTrip.updated_at = new Date().toISOString();
-        }
-        if (!localTrip.user_id && currentUser) {
-          localTrip.user_id = currentUser.id;
-        }
-        mergedMap.set(id, localTrip);
+      if (!remoteOwnedMap.has(id) && !remoteSharedMap.has(id)) {
+        if (localTrip.user_id && localTrip.user_id !== currentUser.id) return;
+        if (!localTrip.updated_at) localTrip.updated_at = new Date().toISOString();
+        if (!localTrip.user_id && currentUser) localTrip.user_id = currentUser.id;
+        mergedMap.set(id, { ...localTrip, role: 'owner' });
         localOnlyTrips.push(localTrip);
       }
     });
 
+    // 共享行程以 Supabase 雲端版本為準。
+    // 就算瀏覽器曾留有同 ID 的舊測試資料，也完整覆蓋，不再只修改 role。
     remoteShared.forEach(sharedTrip => {
-      if (!mergedMap.has(sharedTrip.id)) {
-        mergedMap.set(sharedTrip.id, sharedTrip);
-      } else {
-        const existing = mergedMap.get(sharedTrip.id);
-        existing.role = sharedTrip.role;
-      }
+      mergedMap.set(sharedTrip.id, { ...sharedTrip, role: sharedTrip.role || 'editor' });
     });
 
     state.trips = Array.from(mergedMap.values());
