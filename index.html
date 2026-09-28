@@ -247,6 +247,17 @@ input,textarea,select{font-family:inherit;}
 .cat-title{font-family:var(--serif-ui);font-weight:600;font-size:14.5px;flex:1;}
 .cat-frac{font-family:var(--mono);font-size:12px;color:var(--ink-soft);background:var(--paper-deep);
   padding:2px 8px;border-radius:20px;white-space:nowrap;}
+.cat-order-controls{display:inline-flex;gap:3px;flex-shrink:0;}
+.cat-order-controls button{
+  width:26px;height:26px;padding:0;border:1px solid var(--line);border-radius:6px;
+  background:var(--white);color:var(--ink-soft);font-size:14px;line-height:1;cursor:pointer;
+}
+.cat-order-controls button:hover{color:var(--ink);border-color:var(--brass);background:var(--paper-deep);}
+@media(max-width:520px){
+  .cat-head{flex-wrap:wrap;}
+  .cat-order-controls{margin-left:auto;}
+  .bulk-toggle{margin-left:0;}
+}
 .bulk-toggle{
   background:none;border:1px solid var(--line);color:var(--ink-soft);font-size:12px;border-radius:6px;
   padding:3px 8px;flex-shrink:0;display:inline-flex;align-items:center;justify-content:center;
@@ -1058,6 +1069,13 @@ function ensureCategories(cats){
   // 正規化流程忽略掉、每次重新整理都被重置。
   if(cats.hiddenChips){
     base.hiddenChips = cats.hiddenChips;
+  }
+  // 每趟行程可自訂大分類顯示順序；只保存合法且不重複的分類 ID。
+  // 新增分類若未出現在舊順序中，會自動接在最後，確保舊資料向後相容。
+  if(Array.isArray(cats.categoryOrder)){
+    const validIds = new Set(CATS.map(c => c.id));
+    const seen = new Set();
+    base.categoryOrder = cats.categoryOrder.filter(id => validIds.has(id) && !seen.has(id) && seen.add(id));
   }
   return base;
 }
@@ -2663,7 +2681,22 @@ function renderTripDetail(){
   const isOwner = !trip.user_id || (currentUser && trip.user_id === currentUser.id);
 
   let catsHtml = '';
+  const savedOrder = (trip.categories && Array.isArray(trip.categories.categoryOrder))
+    ? trip.categories.categoryOrder
+    : [];
+  const catMap = new Map(CATS.map(c => [c.id, c]));
+  const orderedCats = [];
+  const usedCatIds = new Set();
+  savedOrder.forEach(id => {
+    if(catMap.has(id) && !usedCatIds.has(id)){
+      orderedCats.push(catMap.get(id));
+      usedCatIds.add(id);
+    }
+  });
   CATS.forEach(cat => {
+    if(!usedCatIds.has(cat.id)) orderedCats.push(cat);
+  });
+  orderedCats.forEach(cat => {
     catsHtml += renderCategoryCard(trip, cat);
   });
 
@@ -2704,6 +2737,33 @@ function renderTripDetail(){
       ${catsHtml}
     </div>
   `;
+}
+
+// 調整「機票／住宿／簽證…」等大分類順序。
+// 使用上下按鈕而不是只依賴拖曳，手機 Safari 也能穩定操作。
+function moveCategory(catId, direction){
+  const trip = state.trips.find(t => t.id === state.currentTripId);
+  if(!trip || !trip.categories) return;
+
+  const validIds = CATS.map(c => c.id);
+  const saved = Array.isArray(trip.categories.categoryOrder) ? trip.categories.categoryOrder : [];
+  const order = [];
+  const seen = new Set();
+  saved.forEach(id => {
+    if(validIds.includes(id) && !seen.has(id)){ order.push(id); seen.add(id); }
+  });
+  validIds.forEach(id => { if(!seen.has(id)) order.push(id); });
+
+  const index = order.indexOf(catId);
+  const target = index + direction;
+  if(index < 0 || target < 0 || target >= order.length) return;
+
+  [order[index], order[target]] = [order[target], order[index]];
+  trip.categories.categoryOrder = order;
+  trip.updated_at = new Date().toISOString();
+  saveLocalCache(state.trips);
+  scheduleSave();
+  render();
 }
 
 function renderCategoryCard(trip, cat){
@@ -2932,6 +2992,10 @@ function renderCategoryCard(trip, cat){
         <span class="cat-icon">${cat.icon}</span>
         <span class="cat-title">${cat.label}</span>
         ${prog ? `<span class="cat-frac">${prog.done}/${prog.total}</span>` : ''}
+        <span class="cat-order-controls" title="調整分類順序">
+          <button type="button" onclick="moveCategory('${cat.id}', -1)" aria-label="${cat.label}往前移" title="往前移">↑</button>
+          <button type="button" onclick="moveCategory('${cat.id}', 1)" aria-label="${cat.label}往後移" title="往後移">↓</button>
+        </span>
         <button class="bulk-toggle" onclick="toggleBulk('${cat.id}')" title="快速貼上多筆資料">批次貼上</button>
       </div>
       <div class="cat-hint-line">💡 ${cat.hint}</div>
