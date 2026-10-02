@@ -1,0 +1,4 @@
+更新 GitHub：以 index.html 取代首頁，新增 manifest.webmanifest 與整個 icons 資料夾
+其餘原有檔案保留，README 與提供的原檔相同
+等部署完成後，使用 Safari 或 Android Chrome 加入主畫面測試
+本次只新增 HTML head 圖示設定，未修改頁面、資料處理、登入或同步功能
