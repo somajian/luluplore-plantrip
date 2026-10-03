@@ -886,6 +886,297 @@ input,textarea,select{font-family:inherit;}
   .creator-card-btn{width:100%;}
 }
 
+
+/* ===== 購物清單批次整理 + 花費待收款 ===== */
+.shopping-batch-bar{display:flex;align-items:center;gap:6px;flex-wrap:wrap;padding:8px 9px;margin:0 0 10px;border:1px dashed var(--line);border-radius:10px;background:#FBF8EF;font-size:11px}
+.shopping-batch-bar select{min-width:110px;flex:1 1 130px}.shopping-batch-bar button{font-size:11px;padding:6px 8px}
+.shopping-select-check{position:absolute;top:5px;right:5px;z-index:4;width:18px;height:18px;accent-color:var(--teal)}
+.shopping-card{position:relative}
+.receivable-draft{margin-top:6px;padding:8px 9px;border:1px solid #E4D7A7;border-radius:10px;background:#FFF9E8;font-size:11px}
+.receivable-draft-toggle{display:flex;align-items:center;gap:7px;font-weight:700;cursor:pointer}
+.receivable-draft-fields{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:8px}.receivable-draft-fields .wide{grid-column:1/-1}
+.receivable-draft-fields input{width:100%;min-width:0}
+.receivable-panel{margin-top:10px;border:1px solid #E4D7A7;border-radius:12px;background:#FFF9E8;overflow:hidden}
+.receivable-panel-head{width:100%;border:0;background:transparent;padding:9px 10px;display:flex;align-items:center;justify-content:space-between;gap:8px;text-align:left;cursor:pointer}
+.receivable-panel-title,.receivable-panel-amount{font-size:12px;font-weight:800}.receivable-panel-amount{font-family:var(--mono)}
+.receivable-panel-body{padding:0 10px 10px}.receivable-filters{display:flex;gap:5px;flex-wrap:wrap;margin-bottom:8px}
+.receivable-filter-btn{border:1px solid var(--line);background:#fff;border-radius:999px;padding:5px 8px;font-size:10px;cursor:pointer}
+.receivable-filter-btn.active{background:var(--teal);color:white;border-color:var(--teal)}.receivable-person-filter{font-size:10px;max-width:140px}
+.receivable-person-row{display:flex;justify-content:space-between;gap:8px;padding:5px 0;border-top:1px dashed #E4D7A7;font-size:11px}
+.receivable-item{border-left:4px solid #D8B44A}.receivable-item.received{border-left-color:#6E9C86}
+.receivable-badge{display:inline-flex;align-items:center;gap:3px;font-size:10px;font-weight:800;padding:3px 6px;border-radius:999px;background:#FFF0B8;color:#705600}
+.receivable-badge.received{background:#E4F1E9;color:#35624B}
+.receivable-inline{margin:6px 0 2px;padding:7px 8px;border-radius:9px;background:#FFF9E8;display:grid;grid-template-columns:1fr 1fr;gap:5px}
+.receivable-inline .wide{grid-column:1/-1}.receivable-inline input{width:100%;min-width:0;font-size:11px}
+.receivable-status-btn{grid-column:1/-1;border:1px solid #D7C27C;background:#fff;border-radius:8px;padding:5px 7px;font-size:10px;cursor:pointer}
+.expense-filter-hidden{display:none!important}
+@media(max-width:640px){.receivable-draft-fields,.receivable-inline{grid-template-columns:1fr}.receivable-draft-fields .wide,.receivable-inline .wide{grid-column:1}.shopping-batch-bar{align-items:stretch}}
+
+
+/* ===== 第二輪 UX：購物操作一致化 + 記帳摘要模式 ===== */
+.shopping-img-edit-btn{top:auto!important;right:4px!important;bottom:4px!important}
+.shopping-select-check{top:5px!important;right:5px!important}
+.expense-compact-toolbar{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin:4px 0 9px}
+.expense-trip-total{font-size:12px;font-weight:800;margin-right:auto}
+.expense-tool-btn{border:1px solid var(--line);background:var(--white);border-radius:999px;padding:5px 9px;font-size:10.5px;cursor:pointer;color:var(--ink)}
+.expense-tool-btn.active{background:var(--teal);color:#fff;border-color:var(--teal)}
+.expense-filter-box{border:1px solid var(--line);background:var(--paper-deep);border-radius:10px;padding:8px;margin:0 0 9px;display:flex;gap:6px;flex-wrap:wrap}
+.expense-filter-box select{flex:1 1 110px;min-width:0;font-size:11px}
+.expense-compact-item{border-bottom:1px solid var(--line);padding:8px 4px;background:transparent}
+.expense-compact-item:last-child{border-bottom:none}
+.expense-compact-item.pending{border-left:3px solid #D8B44A;padding-left:7px}
+.expense-summary-row{display:grid;grid-template-columns:18px minmax(0,1fr) auto;gap:7px;align-items:start;cursor:pointer}
+.expense-summary-drag{font-size:15px;color:var(--ink-soft);line-height:22px;cursor:grab;touch-action:none}
+.expense-summary-main{min-width:0}
+.expense-summary-name{font-size:12.5px;font-weight:750;line-height:1.35;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;overflow-wrap:anywhere}
+.expense-summary-meta{font-size:10.5px;color:var(--ink-soft);margin-top:3px;white-space:normal}
+.expense-summary-amount{font-family:var(--mono);font-size:12.5px;font-weight:800;white-space:nowrap;text-align:right;min-width:72px}
+.expense-summary-receivable{font-size:10px;color:#7A5A00;font-weight:800;margin-top:3px;white-space:nowrap}
+.expense-edit-panel{margin:8px 0 2px 25px;padding:9px;border:1px solid var(--line);border-radius:10px;background:var(--paper-deep)}
+.expense-edit-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.expense-edit-grid .wide{grid-column:1/-1}.expense-edit-grid input,.expense-edit-grid textarea{width:100%;min-width:0;box-sizing:border-box}
+.expense-edit-actions{display:flex;justify-content:space-between;gap:8px;margin-top:8px}
+.expense-edit-actions button{border:1px solid var(--line);background:#fff;border-radius:7px;padding:5px 9px;font-size:10.5px;cursor:pointer}
+.expense-edit-actions .danger{color:var(--stamp);border-color:rgba(181,64,46,.35)}
+.expense-add-fab{position:sticky;bottom:12px;margin:10px 0 4px auto;display:block;z-index:12;background:var(--teal);color:#fff;border:0;border-radius:999px;padding:9px 14px;font-weight:800;font-size:12px;box-shadow:0 5px 16px rgba(27,42,74,.18);cursor:pointer}
+.expense-add-overlay{position:fixed;inset:0;background:rgba(27,42,74,.32);z-index:9998;display:flex;align-items:flex-end;justify-content:center}
+.expense-add-sheet{width:min(620px,100%);max-height:88vh;overflow:auto;background:var(--paper);border-radius:18px 18px 0 0;padding:16px;box-shadow:0 -10px 30px rgba(27,42,74,.2)}
+.expense-add-sheet-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px}
+.expense-add-sheet-head strong{font-size:16px}.expense-add-sheet-head button{border:0;background:none;font-size:20px;cursor:pointer}
+.expense-add-grid{display:grid;grid-template-columns:1fr 1fr;gap:7px}.expense-add-grid .wide{grid-column:1/-1}
+.expense-add-grid input,.expense-add-grid textarea{width:100%;min-width:0;box-sizing:border-box}
+.expense-add-submit{width:100%;margin-top:10px;background:var(--teal);color:#fff;border:0;border-radius:9px;padding:9px;font-weight:800;cursor:pointer}
+.expense-prepaid-compact{padding:7px 4px;border-bottom:1px solid var(--line);display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px}
+.expense-prepaid-compact .name{font-size:11.5px;font-weight:700}.expense-prepaid-compact .meta{font-size:9.5px;color:var(--ink-soft)}
+.expense-prepaid-compact .amount{font-family:var(--mono);font-size:11.5px;font-weight:800;white-space:nowrap}
+@media(max-width:640px){
+  .expense-edit-grid,.expense-add-grid{grid-template-columns:1fr}.expense-edit-grid .wide,.expense-add-grid .wide{grid-column:1}
+  .expense-add-fab{position:sticky;bottom:10px}
+  .expense-summary-amount{min-width:66px}
+}
+
+
+.shopping-photo-pencil{
+  position:absolute;right:5px;bottom:5px;z-index:7;width:26px;height:26px;
+  border:1px solid rgba(27,42,74,.18);border-radius:50%;background:rgba(255,255,255,.94);
+  color:var(--ink);font-size:14px;font-weight:800;line-height:24px;text-align:center;
+  padding:0;cursor:pointer;box-shadow:0 2px 7px rgba(27,42,74,.14)
+}
+.shopping-img-wrap{position:relative}
+
+
+/* 統計卡片：延續原本各區塊獨立底色框 */
+.expense-summary .summary-group{
+  margin:9px 0;
+  padding:10px 11px;
+  border:1px solid var(--line);
+  border-radius:11px;
+  background:var(--paper-deep);
+}
+.expense-summary .summary-group-title{
+  font-weight:800;
+  margin-bottom:5px;
+}
+
+
+/* 花費統計：各區塊維持不同底色 */
+.expense-summary .summary-group.by-payment{background:#EEF0E2;}
+.expense-summary .summary-group.by-category{background:#F4EAD0;}
+.expense-summary .summary-group.by-prepaid{background:#F6E4D4;}
+
+.grand-total-note{font-size:10px;font-weight:500;color:var(--ink-soft);}
+
+
+/* ===== Checklist 類別：緊湊單筆版 ===== */
+/* 不套用 shopping / expenses / itinerary 等特殊卡片 */
+.cat-card:not([data-cat="shopping"]):not([data-cat="expenses"]):not([data-cat="routePlanning"]) .item-block{
+  position:relative;
+  padding:9px 10px 8px;
+  margin-bottom:7px;
+  border-radius:11px;
+}
+.cat-card:not([data-cat="shopping"]):not([data-cat="expenses"]):not([data-cat="routePlanning"]) .item-main{
+  display:grid;
+  grid-template-columns:auto auto minmax(0,1fr) auto auto;
+  align-items:start;
+  column-gap:7px;
+  row-gap:5px;
+}
+.cat-card:not([data-cat="shopping"]):not([data-cat="expenses"]):not([data-cat="routePlanning"]) .drag-handle{
+  grid-column:1;
+  grid-row:1;
+  margin:0;
+  align-self:center;
+}
+.cat-card:not([data-cat="shopping"]):not([data-cat="expenses"]):not([data-cat="routePlanning"]) .item-check{
+  grid-column:2;
+  grid-row:1;
+  margin:0;
+  align-self:center;
+}
+.cat-card:not([data-cat="shopping"]):not([data-cat="expenses"]):not([data-cat="routePlanning"]) .item-text,
+.cat-card:not([data-cat="shopping"]):not([data-cat="expenses"]):not([data-cat="routePlanning"]) .item-text-wrap{
+  grid-column:3;
+  grid-row:1;
+  min-width:0;
+  margin:0;
+  line-height:1.4;
+  overflow-wrap:anywhere;
+}
+.cat-card:not([data-cat="shopping"]):not([data-cat="expenses"]):not([data-cat="routePlanning"]) .item-more{
+  grid-column:4;
+  grid-row:1;
+  margin:0;
+  align-self:center;
+}
+.cat-card:not([data-cat="shopping"]):not([data-cat="expenses"]):not([data-cat="routePlanning"]) .item-delete{
+  grid-column:5;
+  grid-row:1;
+  margin:0;
+  align-self:center;
+}
+/* 原本某些版本 action 被包在容器裡，讓它同列且不再獨占高度 */
+.cat-card:not([data-cat="shopping"]):not([data-cat="expenses"]):not([data-cat="routePlanning"]) .item-actions{
+  display:flex;
+  align-items:center;
+  gap:5px;
+  margin:0;
+  width:auto;
+}
+.cat-card:not([data-cat="shopping"]):not([data-cat="expenses"]):not([data-cat="routePlanning"]) .item-main > .item-actions{
+  grid-column:4 / 6;
+  grid-row:1;
+  justify-self:end;
+}
+/* 金額／幣別直接接在主列下方 */
+.cat-card:not([data-cat="shopping"]):not([data-cat="expenses"]):not([data-cat="routePlanning"]) .item-amount-row,
+.cat-card:not([data-cat="shopping"]):not([data-cat="expenses"]):not([data-cat="routePlanning"]) .money-row{
+  margin-top:6px;
+  padding-left:35px;
+  gap:6px;
+}
+.cat-card:not([data-cat="shopping"]):not([data-cat="expenses"]):not([data-cat="routePlanning"]) .item-detail{
+  margin-top:7px;
+  padding-top:7px;
+}
+/* 新增列也壓縮並維持既有圓角 */
+.cat-card:not([data-cat="shopping"]):not([data-cat="expenses"]) .add-item-row,
+.cat-card:not([data-cat="shopping"]):not([data-cat="expenses"]) .add-item-row-stack{
+  gap:7px;
+  margin-top:7px;
+}
+.cat-card:not([data-cat="shopping"]):not([data-cat="expenses"]) .add-item-row input,
+.cat-card:not([data-cat="shopping"]):not([data-cat="expenses"]) .add-item-row textarea,
+.cat-card:not([data-cat="shopping"]):not([data-cat="expenses"]) .add-item-row-stack input,
+.cat-card:not([data-cat="shopping"]):not([data-cat="expenses"]) .add-item-row-stack textarea{
+  border-radius:10px;
+  min-height:38px;
+}
+/* 小螢幕仍保留名稱彈性，不讓右側操作鈕被擠走 */
+@media(max-width:640px){
+  .cat-card:not([data-cat="shopping"]):not([data-cat="expenses"]):not([data-cat="routePlanning"]) .item-block{
+    padding:8px 8px 7px;
+  }
+  .cat-card:not([data-cat="shopping"]):not([data-cat="expenses"]):not([data-cat="routePlanning"]) .item-main{
+    grid-template-columns:auto auto minmax(0,1fr) auto auto;
+    column-gap:5px;
+  }
+  .cat-card:not([data-cat="shopping"]):not([data-cat="expenses"]):not([data-cat="routePlanning"]) .item-text,
+  .cat-card:not([data-cat="shopping"]):not([data-cat="expenses"]):not([data-cat="routePlanning"]) .item-text-wrap{
+    display:-webkit-box;
+    -webkit-box-orient:vertical;
+    -webkit-line-clamp:2;
+    overflow:hidden;
+  }
+  .cat-card:not([data-cat="shopping"]):not([data-cat="expenses"]):not([data-cat="routePlanning"]) .item-amount-row,
+  .cat-card:not([data-cat="shopping"]):not([data-cat="expenses"]):not([data-cat="routePlanning"]) .money-row{
+    padding-left:30px;
+  }
+}
+
+
+/* ===== 真正對應 renderItemBlock 的 checklist 緊湊排版 ===== */
+.compact-checklist-row{
+  display:grid !important;
+  grid-template-columns:auto auto minmax(0,1fr) auto auto !important;
+  align-items:center !important;
+  gap:6px !important;
+  min-height:34px;
+}
+.compact-checklist-row .item-drag-handle{
+  grid-column:1; margin:0 !important; align-self:center;
+}
+.compact-checklist-row .stamp-check{
+  grid-column:2; margin:0 !important; align-self:center;
+}
+.compact-checklist-row .item-text{
+  grid-column:3;
+  min-width:0 !important;
+  width:100% !important;
+  margin:0 !important;
+  padding:3px 2px !important;
+  border:0 !important;
+  background:transparent !important;
+  line-height:1.4 !important;
+  resize:none;
+  overflow:hidden;
+}
+.compact-checklist-row .item-more{
+  grid-column:4; margin:0 !important; align-self:center;
+}
+.compact-checklist-row .item-delete{
+  grid-column:5; margin:0 !important; align-self:center;
+}
+.compact-checklist-meta{
+  margin-top:5px !important;
+  padding-left:36px !important;
+  gap:6px !important;
+}
+.compact-checklist-meta .item-amount,
+.compact-checklist-meta .item-currency{
+  min-height:34px !important;
+  height:34px !important;
+  border-radius:9px !important;
+}
+@media(max-width:640px){
+  .compact-checklist-row{
+    grid-template-columns:auto auto minmax(0,1fr) auto auto !important;
+    gap:5px !important;
+  }
+  .compact-checklist-row .item-text{
+    max-height:3em;
+  }
+  .compact-checklist-meta{padding-left:32px !important;}
+}
+
+
+/* 換匯 + 行程路線規劃同步使用緊湊版 */
+.compact-checklist-row .item-day{
+  min-width:48px !important;
+  width:58px !important;
+  height:32px !important;
+  min-height:32px !important;
+  border-radius:9px !important;
+  padding:4px 6px !important;
+  margin:0 !important;
+}
+/* itinerary 多一個 Day 欄位，讓名稱仍保有主要寬度 */
+.cat-card[data-cat="routePlanning"] .compact-checklist-row{
+  grid-template-columns:auto auto 58px minmax(0,1fr) auto auto !important;
+}
+.cat-card[data-cat="routePlanning"] .compact-checklist-row .item-drag-handle{grid-column:1}
+.cat-card[data-cat="routePlanning"] .compact-checklist-row .stamp-check{grid-column:2}
+.cat-card[data-cat="routePlanning"] .compact-checklist-row .item-day{grid-column:3}
+.cat-card[data-cat="routePlanning"] .compact-checklist-row .item-text{grid-column:4}
+.cat-card[data-cat="routePlanning"] .compact-checklist-row .item-more{grid-column:5}
+.cat-card[data-cat="routePlanning"] .compact-checklist-row .item-delete{grid-column:6}
+@media(max-width:640px){
+  .cat-card[data-cat="routePlanning"] .compact-checklist-row{
+    grid-template-columns:auto auto 50px minmax(0,1fr) auto auto !important;
+  }
+  .cat-card[data-cat="routePlanning"] .compact-checklist-row .item-day{width:50px !important;min-width:50px !important}
+}
+
 </style>
 </head>
 <body>
@@ -1314,6 +1605,13 @@ let ui = {
   bulkDraft: {},
   bulkSubgroupTarget: {},
   summaryOpen: new Set(),
+  receivableOpen: false,
+  receivableFilter: 'all',
+  receivablePersonFilter: '',
+  expenseAddOpen: false,
+  expenseFilterOpen: false,
+  expenseCategoryFilter: '',
+  expensePaymentFilter: '',
   confirm: null,
   toast: null,
   shareModal: false,
@@ -1955,36 +2253,77 @@ function toggleSummary(catId){
 }
 function renderExpenseSummaryPanel(trip){
   const open = ui.summaryOpen.has('expenses');
+
   const rowsHtml = (byCur) => {
-    const currencies = Object.keys(byCur);
+    const currencies = Object.keys(byCur || {});
     if(currencies.length === 0) return '<div class="summary-row"><span>尚無資料</span><span>–</span></div>';
     return currencies.map(cur => `
       <div class="summary-title" style="margin-top:10px;">💱 ${escapeHtml(cur)}</div>
-      ${byCur[cur].map(([k,v])=>`<div class="summary-row"><span>${escapeHtml(k)}</span><span>${v.toLocaleString()}</span></div>`).join('')}
+      ${(byCur[cur] || []).map(([k,v])=>`<div class="summary-row"><span>${escapeHtml(k)}</span><span>${Number(v).toLocaleString()}</span></div>`).join('')}
     `).join('');
   };
+
+  // 旅途中手動記帳：類別與總花費扣除待收款，付款方式維持實際支付總額
+  const manual = getManualExpenseItems(trip);
+  const categoryByCur = {};
+  const paymentByCur = {};
+  const totalByCur = {};
+
+  manual.forEach(item=>{
+    const cur=(item.currency||'未填').trim()||'未填';
+    const gross=parseFloat(item.amount)||0;
+    const personal=personalExpenseAmount(item);
+    const category=(item.category||'其他').trim()||'其他';
+    const payment=(item.payment||'未填').trim()||'未填';
+
+    if(gross>0){
+      if(!paymentByCur[cur]) paymentByCur[cur]={};
+      paymentByCur[cur][payment]=(paymentByCur[cur][payment]||0)+gross;
+    }
+    if(personal>0){
+      if(!categoryByCur[cur]) categoryByCur[cur]={};
+      categoryByCur[cur][category]=(categoryByCur[cur][category]||0)+personal;
+      totalByCur[cur]=(totalByCur[cur]||0)+personal;
+    }
+  });
+
+  const sortMap = obj => Object.fromEntries(
+    Object.entries(obj).map(([cur,map])=>[
+      cur,
+      Object.entries(map).sort((a,b)=>b[1]-a[1])
+    ])
+  );
+  const totalRows = Object.fromEntries(
+    Object.entries(totalByCur).map(([cur,total])=>[cur,[['總花費',total]]])
+  );
+
   if(!open){
     return `<button class="summary-toggle" onclick="toggleSummary('expenses')">查看依付款方式／依類別／固定支出統整 ▾</button>`;
   }
+
   return `
     <button class="summary-toggle" onclick="toggleSummary('expenses')">收起統整 ▲</button>
     <div class="money-panel expense-summary">
-      <div class="summary-group by-payment">
-        <div class="summary-group-title">依付款方式</div>
-        <div class="summary-note">只計算旅途當中的花費（不含旅行固定支出），方便掌握信用卡回饋的額度</div>
-        ${rowsHtml(expensePaymentBreakdown(trip))}
-      </div>
+
       <div class="summary-group by-category">
-        <div class="summary-group-title">依類別</div>
-        ${rowsHtml(expenseCategoryBreakdown(trip))}
+        <div class="summary-group-title">依類別 <span style="font-size:10px;font-weight:500;color:var(--ink-soft);">（已扣除待收款金額）</span></div>
+        ${rowsHtml(sortMap(categoryByCur))}
       </div>
+
+      <div class="summary-group by-payment">
+        <div class="summary-group-title">依付款方式 <span style="font-size:10px;font-weight:500;color:var(--ink-soft);">（實際支付的總額）</span></div>
+        ${rowsHtml(sortMap(paymentByCur))}
+      </div>
+
       <div class="summary-group by-prepaid">
         <div class="summary-group-title">旅行固定支出（機票／住宿…等上方分類已填金額的項目）</div>
         ${rowsHtml(expensePrepaidBreakdown(trip))}
       </div>
+
     </div>
   `;
 }
+
 function currencySuggestions(trip){
   const set = new Set();
   if(trip && trip.categories){
@@ -1997,6 +2336,216 @@ function currencySuggestions(trip){
   }
   const hidden = getHiddenChips(trip, 'currency');
   return Array.from(set).filter(v => !hidden.includes(v));
+}
+
+
+/* ===================== 待收款 ===================== */
+function getReceivableItems(trip){ return getManualExpenseItems(trip).filter(i=>i&&i.isReceivable); }
+function receivablePeople(trip){
+  const set=new Set();
+  getReceivableItems(trip).forEach(i=>{if((i.receivablePerson||'').trim())set.add(i.receivablePerson.trim());});
+  return Array.from(set).sort((a,b)=>a.localeCompare(b,'zh-Hant'));
+}
+function pendingReceivableTotal(trip){
+  return getReceivableItems(trip).filter(i=>i.receivableStatus!=='received').reduce((sum,i)=>sum+(parseFloat(i.receivableAmount)||0),0);
+}
+function receivableGroupedPending(trip){
+  const map={};
+  getReceivableItems(trip).filter(i=>i.receivableStatus!=='received').forEach(i=>{
+    const p=(i.receivablePerson||'未指定').trim()||'未指定';
+    if(!map[p])map[p]={count:0,amount:0};
+    map[p].count++; map[p].amount+=parseFloat(i.receivableAmount)||0;
+  });
+  return Object.entries(map).sort((a,b)=>b[1].amount-a[1].amount);
+}
+function toggleReceivablePanel(){ui.receivableOpen=!ui.receivableOpen;render();}
+function setReceivableFilter(v){
+  ui.receivableFilter=v;
+  if(v!=='pending') ui.receivableOpen=false;
+  render();
+}
+function setReceivablePersonFilter(v){ui.receivablePersonFilter=v;render();}
+function expensePassesReceivableFilter(item){
+  if(!item||item.isPrepaid)return true;
+  const status=item.isReceivable?(item.receivableStatus==='received'?'received':'pending'):'normal';
+  if(ui.receivableFilter==='pending'&&status!=='pending')return false;
+  if(ui.receivableFilter==='received'&&status!=='received')return false;
+  if(ui.receivablePersonFilter&&(!item.isReceivable||(item.receivablePerson||'')!==ui.receivablePersonFilter))return false;
+  return true;
+}
+function updateReceivableField(itemId,key,val){
+  const trip=state.trips.find(t=>t.id===state.currentTripId); if(!trip)return;
+  const item=(trip.categories.expenses.items||[]).find(i=>i.id===itemId); if(!item)return;
+  item[key]=val;
+  if(key==='isReceivable'&&val&&!item.receivableAmount)item.receivableAmount=item.amount||'';
+  if(key==='isReceivable'&&val&&!item.receivableStatus)item.receivableStatus='pending';
+  scheduleSave();render();
+}
+function toggleReceivableStatus(itemId){
+  const trip=state.trips.find(t=>t.id===state.currentTripId);if(!trip)return;
+  const item=(trip.categories.expenses.items||[]).find(i=>i.id===itemId);if(!item)return;
+  item.receivableStatus=item.receivableStatus==='received'?'pending':'received';scheduleSave();render();
+}
+function renderReceivablePanel(trip){
+  const all=getReceivableItems(trip),pending=all.filter(i=>i.receivableStatus!=='received'),received=all.filter(i=>i.receivableStatus==='received');
+  const grouped=receivableGroupedPending(trip),people=receivablePeople(trip);
+  return `<div class="receivable-panel">
+    <button type="button" class="receivable-panel-head" onclick="toggleReceivablePanel()">
+      <span class="receivable-panel-title">⚠️ 待收款 ${pending.length?`(${pending.length} 筆)`:''}</span>
+      <span class="receivable-panel-amount">${pendingReceivableTotal(trip).toLocaleString()} <span style="font-size:9px;font-weight:normal;">尚未收回</span> ${ui.receivableOpen?'▲':'▼'}</span>
+    </button>
+    ${ui.receivableOpen?`<div class="receivable-panel-body">
+      <div class="receivable-filters">
+        <button class="receivable-filter-btn ${ui.receivableFilter==='all'?'active':''}" onclick="setReceivableFilter('all')">全部 ${all.length}</button>
+        <button class="receivable-filter-btn ${ui.receivableFilter==='pending'?'active':''}" onclick="setReceivableFilter('pending')">⚠️ 待收款 ${pending.length}</button>
+        <button class="receivable-filter-btn ${ui.receivableFilter==='received'?'active':''}" onclick="setReceivableFilter('received')">✓ 已收款 ${received.length}</button>
+        <select class="receivable-person-filter" onchange="setReceivablePersonFilter(this.value)"><option value="">全部對象</option>${people.map(p=>`<option value="${escapeAttr(p)}" ${ui.receivablePersonFilter===p?'selected':''}>${escapeHtml(p)}</option>`).join('')}</select>
+      </div>
+      ${grouped.length?grouped.map(([p,v])=>`<div class="receivable-person-row"><span>${escapeHtml(p)} · ${v.count} 筆</span><strong>${v.amount.toLocaleString()}</strong></div>`).join(''):'<div style="font-size:11px;color:var(--ink-soft);">目前沒有尚未收回的款項</div>'}
+      <div style="font-size:10px;color:var(--ink-soft);margin-top:7px;">上方篩選會套用到下面的手動記帳明細，旅行固定支出不受影響</div>
+    </div>`:''}
+  </div>`;
+}
+
+
+
+/* ===== 個人實際花費：扣除代墊／待收款部分 ===== */
+function personalExpenseAmount(item){
+  const gross = parseFloat(item && item.amount) || 0;
+  if(!item || !item.isReceivable) return gross;
+  const reimbursable = Math.max(0, parseFloat(item.receivableAmount) || 0);
+  return Math.max(0, gross - Math.min(gross, reimbursable));
+}
+function personalExpenseTotalsByCurrency(trip){
+  const map = {};
+  getAllExpenseItems(trip).forEach(item=>{
+    const cur=(item.currency||'').trim()||'未填';
+    map[cur]=(map[cur]||0)+personalExpenseAmount(item);
+  });
+  return Object.entries(map).filter(([,v])=>Math.abs(v)>0.000001);
+}
+function categoryPersonalTotals(trip){
+  const map={};
+  getAllExpenseItems(trip).forEach(item=>{
+    const amount=personalExpenseAmount(item);
+    if(!amount) return;
+    const key=(item.category||'其他').trim()||'其他';
+    map[key]=(map[key]||0)+amount;
+  });
+  return map;
+}
+
+/* ===================== 記帳摘要模式 ===================== */
+function formatExpenseDate(date){
+  if(!date) return '未填日期';
+  const p=String(date).split('-');
+  return p.length===3 ? `${parseInt(p[1],10)}/${parseInt(p[2],10)}` : date;
+}
+function formatExpenseMoney(item){
+  const amt=parseFloat(item.amount);
+  const num=Number.isFinite(amt)?amt.toLocaleString():((item.amount||'')||'0');
+  const cur=(item.currency||'').trim();
+  const symbolMap={JPY:'¥',YEN:'¥',USD:'US$',TWD:'NT$',NTD:'NT$',EUR:'€',KRW:'₩',THB:'฿'};
+  return `${symbolMap[cur.toUpperCase()]|| (cur?cur+' ':'')}${num}`;
+}
+function expenseVisibleByToolbar(item){
+  if(!expensePassesReceivableFilter(item)) return false;
+  if(ui.expenseCategoryFilter && (item.category||'')!==ui.expenseCategoryFilter) return false;
+  if(ui.expensePaymentFilter && (item.payment||'')!==ui.expensePaymentFilter) return false;
+  return true;
+}
+function openExpenseAdd(){ui.expenseAddOpen=true;render();}
+function closeExpenseAdd(){ui.expenseAddOpen=false;render();}
+function toggleExpenseFilters(){ui.expenseFilterOpen=!ui.expenseFilterOpen;render();}
+function setExpenseCategoryFilter(v){ui.expenseCategoryFilter=v;render();}
+function setExpensePaymentFilter(v){ui.expensePaymentFilter=v;render();}
+function addExpenseFromSheet(){
+  const d=ui.newItem.expenses||{};
+  if(!(d.text||'').trim()){showToast('請先輸入品項名稱',true);return;}
+  addItem('expenses');
+  ui.expenseAddOpen=false;
+  render();
+}
+function renderExpenseToolbar(trip){
+  const manual=getManualExpenseItems(trip);
+  const pending=manual.filter(i=>i.isReceivable&&i.receivableStatus!=='received');
+  const cats=[...new Set(manual.map(i=>(i.category||'').trim()).filter(Boolean))];
+  const pays=[...new Set(manual.map(i=>(i.payment||'').trim()).filter(Boolean))];
+  return `<div class="expense-compact-toolbar">
+    <button class="expense-tool-btn ${ui.receivableFilter==='all'?'active':''}" onclick="setReceivableFilter('all')">全部 ${manual.length}</button>
+    <button class="expense-tool-btn ${ui.receivableFilter==='pending'?'active':''}" onclick="setReceivableFilter('pending');ui.receivableOpen=true;render()">⚠️ 待收 ${pending.length}</button>
+    <button class="expense-tool-btn ${ui.expenseFilterOpen?'active':''}" onclick="toggleExpenseFilters()">篩選 ▾</button>
+  </div>
+  ${ui.expenseFilterOpen?`<div class="expense-filter-box">
+    <select onchange="setExpenseCategoryFilter(this.value)"><option value="">全部類別</option>${cats.map(v=>`<option value="${escapeAttr(v)}" ${ui.expenseCategoryFilter===v?'selected':''}>${escapeHtml(v)}</option>`).join('')}</select>
+    <select onchange="setExpensePaymentFilter(this.value)"><option value="">全部付款方式</option>${pays.map(v=>`<option value="${escapeAttr(v)}" ${ui.expensePaymentFilter===v?'selected':''}>${escapeHtml(v)}</option>`).join('')}</select>
+    <select onchange="setReceivablePersonFilter(this.value)"><option value="">全部收款對象</option>${receivablePeople(trip).map(v=>`<option value="${escapeAttr(v)}" ${ui.receivablePersonFilter===v?'selected':''}>${escapeHtml(v)}</option>`).join('')}</select>
+    <button class="expense-tool-btn ${ui.receivableFilter==='received'?'active':''}" onclick="setReceivableFilter(ui.receivableFilter==='received'?'all':'received')">✓ 已收款</button>
+  </div>`:''}`;
+}
+function renderExpenseAddSheet(trip){
+  if(!ui.expenseAddOpen) return '';
+  const d=ui.newItem.expenses||{};
+  return `<div class="expense-add-overlay" onclick="if(event.target===this)closeExpenseAdd()">
+    <div class="expense-add-sheet">
+      <div class="expense-add-sheet-head"><strong>＋ 新增花費</strong><button onclick="closeExpenseAdd()">×</button></div>
+      <div class="expense-add-grid">
+        <textarea class="wide" placeholder="品項名稱" rows="2" oninput="setDraftProp('expenses','text',this.value)">${escapeHtml(d.text||'')}</textarea>
+        <input type="number" placeholder="金額" value="${escapeAttr(d.amount||'')}" oninput="setDraftProp('expenses','amount',this.value)">
+        <input type="text" list="currency-list" placeholder="幣別" value="${escapeAttr(d.currency||'')}" oninput="setDraftProp('expenses','currency',this.value)">
+        <input type="date" value="${escapeAttr(d.date||'')}" onchange="setDraftProp('expenses','date',this.value)">
+        <input type="text" list="expense-cat-list" placeholder="類別" value="${escapeAttr(d.category||'')}" oninput="setDraftProp('expenses','category',this.value)">
+        <input class="wide" type="text" list="payment-list" placeholder="付款方式" value="${escapeAttr(d.payment||'')}" oninput="setDraftProp('expenses','payment',this.value)">
+      </div>
+      <div class="receivable-draft">
+        <label class="receivable-draft-toggle"><input type="checkbox" ${d.isReceivable?'checked':''} onchange="setDraftProp('expenses','isReceivable',this.checked);if(this.checked&&!ui.newItem.expenses.receivableAmount)ui.newItem.expenses.receivableAmount=ui.newItem.expenses.amount||'';render()">⚠️ 這筆需要跟別人收錢</label>
+        ${d.isReceivable?`<div class="receivable-draft-fields">
+          <input type="text" placeholder="跟誰收？" value="${escapeAttr(d.receivablePerson||'')}" oninput="setDraftProp('expenses','receivablePerson',this.value)">
+          <input type="number" placeholder="應收金額" value="${escapeAttr(d.receivableAmount||d.amount||'')}" oninput="setDraftProp('expenses','receivableAmount',this.value)">
+          <input class="wide" type="text" placeholder="待收款備註（選填）" value="${escapeAttr(d.receivableNote||'')}" oninput="setDraftProp('expenses','receivableNote',this.value)">
+        </div>`:''}
+      </div>
+      <button class="expense-add-submit" onclick="addExpenseFromSheet()">新增這筆花費</button>
+    </div>
+  </div>`;
+}
+function renderExpenseCompactItem(trip,cat,item,idx){
+  if(!expenseVisibleByToolbar(item)) return '';
+  if(item.isPrepaid){
+    return `<div class="expense-prepaid-compact"><div><div class="name">${escapeHtml(item.text||'未命名固定支出')}</div><div class="meta">旅行固定支出</div></div><div class="amount">${formatExpenseMoney(item)}</div></div>`;
+  }
+  const expanded=ui.expanded.has(item.id);
+  const pending=item.isReceivable&&item.receivableStatus!=='received';
+  return `<div class="expense-compact-item ${pending?'pending':''}" data-id="${item.id}" ondragover="handleItemDragOver(event)" ondrop="handleItemDrop(event,'expenses',${idx})">
+    <div class="expense-summary-row" onclick="toggleExpand('${item.id}')">
+      <span class="expense-summary-drag" draggable="true" onclick="event.stopPropagation()" ondragstart="handleItemDragStart(event,'expenses',${idx})" ondragend="handleItemDragEnd(event)" ontouchstart="handleItemTouchStart(event,'expenses','${item.id}')" ontouchmove="handleItemTouchMove(event)" ontouchend="handleItemTouchEnd(event)">⠿</span>
+      <div class="expense-summary-main">
+        <div class="expense-summary-name">${pending?'⚠️ ':''}${escapeHtml(item.text||'未命名花費')}</div>
+        <div class="expense-summary-meta">${formatExpenseDate(item.date)} ・ ${escapeHtml(item.category||'未分類')} ・ ${escapeHtml(item.payment||'未填付款')}</div>
+      </div>
+      <div><div class="expense-summary-amount">${formatExpenseMoney(item)}</div>${pending?`<div class="expense-summary-receivable">待收 ${((item.currency||'').trim()?escapeHtml(item.currency)+' ':'')}${(parseFloat(item.receivableAmount)||0).toLocaleString()}</div>`:''}</div>
+    </div>
+    ${expanded?`<div class="expense-edit-panel">
+      <div class="expense-edit-grid">
+        <textarea class="wide" rows="2" onchange="updateItem('expenses','${item.id}','text',this.value)">${escapeHtml(item.text||'')}</textarea>
+        <input type="date" value="${escapeAttr(item.date||'')}" onchange="updateItem('expenses','${item.id}','date',this.value)">
+        <input type="number" value="${escapeAttr(item.amount||'')}" placeholder="金額" onchange="updateItem('expenses','${item.id}','amount',this.value)">
+        <input type="text" list="currency-list" value="${escapeAttr(item.currency||'')}" placeholder="幣別" onchange="updateItem('expenses','${item.id}','currency',this.value)">
+        <input type="text" list="expense-cat-list" value="${escapeAttr(item.category||'')}" placeholder="類別" onchange="updateItem('expenses','${item.id}','category',this.value)">
+        <input class="wide" type="text" list="payment-list" value="${escapeAttr(item.payment||'')}" placeholder="付款方式" onchange="updateItem('expenses','${item.id}','payment',this.value)">
+      </div>
+      <div class="receivable-draft">
+        <label class="receivable-draft-toggle"><input type="checkbox" ${item.isReceivable?'checked':''} onchange="updateReceivableField('${item.id}','isReceivable',this.checked)">這筆需要跟別人收錢</label>
+        ${item.isReceivable?`<div class="receivable-draft-fields">
+          <input type="text" placeholder="跟誰收？" value="${escapeAttr(item.receivablePerson||'')}" onchange="updateReceivableField('${item.id}','receivablePerson',this.value)">
+          <input type="number" placeholder="應收金額" value="${escapeAttr(item.receivableAmount||'')}" onchange="updateReceivableField('${item.id}','receivableAmount',this.value)">
+          <input class="wide" type="text" placeholder="待收款備註" value="${escapeAttr(item.receivableNote||'')}" onchange="updateReceivableField('${item.id}','receivableNote',this.value)">
+          <button type="button" class="receivable-status-btn" onclick="toggleReceivableStatus('${item.id}')">${item.receivableStatus==='received'?'↺ 改回待收款':'✓ 標記已收款'}</button>
+        </div>`:''}
+      </div>
+      <div class="expense-edit-actions"><button class="danger" onclick="deleteItem('expenses','${item.id}')">刪除</button><button onclick="toggleExpand('${item.id}')">完成</button></div>
+    </div>`:''}
+  </div>`;
 }
 
 /* ===================== UI 動作 ===================== */
@@ -2144,7 +2693,12 @@ function addItem(catId, itemData = {}){
     date: itemData.date || draft.date || '',
     category: itemData.category || draft.category || '吃',
     payment: itemData.payment || draft.payment || '現金',
-    subgroup: resolvedSubgroup
+    subgroup: resolvedSubgroup,
+    isReceivable: !!(itemData.isReceivable !== undefined ? itemData.isReceivable : draft.isReceivable),
+    receivablePerson: itemData.receivablePerson || draft.receivablePerson || '',
+    receivableAmount: itemData.receivableAmount !== undefined ? itemData.receivableAmount : (draft.receivableAmount || (draft.isReceivable ? (itemData.amount !== undefined ? itemData.amount : draft.amount || '') : '')),
+    receivableStatus: itemData.receivableStatus || (draft.isReceivable ? 'pending' : ''),
+    receivableNote: itemData.receivableNote || draft.receivableNote || ''
   };
 
   if(!trip.categories[catId]) trip.categories[catId] = { items: [] };
@@ -2156,7 +2710,7 @@ function addItem(catId, itemData = {}){
     sortExpenseItemsByDate(trip);
   }
 
-  ui.newItem[catId] = { text:'', amount:'', currency: draft.currency || '', category:'吃', payment:'現金', date:'', day:'', note:'', link:'', subgroup: resolvedSubgroup };
+  ui.newItem[catId] = { text:'', amount:'', currency: draft.currency || '', category:'吃', payment:'現金', date:'', day:'', note:'', link:'', subgroup: resolvedSubgroup, isReceivable:false, receivablePerson:draft.receivablePerson||'', receivableAmount:'', receivableStatus:'', receivableNote:'' };
   
   scheduleSave();
   render();
@@ -2205,6 +2759,7 @@ function toggleBatchSelect(itemId, checked){
 function setBatchMoveTarget(catId, value){
   ui.batchMoveTarget[catId] = value;
 }
+function clearBatchSelection(){ ui.batchSelected.clear(); render(); }
 
 function moveBatchSelected(catId){
   const trip = state.trips.find(t=>t.id===state.currentTripId);
@@ -2928,6 +3483,19 @@ function renderCategoryCard(trip, cat){
       }
     } else if (cat.id === 'shopping') {
       const subgroups = catData.subgroups || [];
+      const batchTarget = ui.batchMoveTarget[cat.id] !== undefined ? ui.batchMoveTarget[cat.id] : '';
+      itemsHtml += `
+        <div class="batch-action-bar">
+          <span>批次移動：</span>
+          <select onchange="setBatchMoveTarget('${cat.id}', this.value)">
+            <option value="" ${batchTarget === '' ? 'selected' : ''}>未分類</option>
+            ${subgroups.map(sg=>`<option value="${escapeAttr(sg)}" ${batchTarget===sg?'selected':''}>${escapeHtml(sg)}</option>`).join('')}
+          </select>
+          <button onclick="moveBatchSelected('${cat.id}')">移動已勾選項目</button>
+          <button class="batch-delete-btn" onclick="deleteBatchSelected('${cat.id}')">🗑 刪除已勾選項目</button>
+        </div>
+      `;
+
       
       subgroups.forEach(subgroup => {
         const subItems = items.filter(i => i.subgroup === subgroup);
@@ -2971,6 +3539,9 @@ function renderCategoryCard(trip, cat){
       if(subgroups.length === 0 && unassigned.length === 0){
         itemsHtml = `<div class="empty-cat">尚無分類群組，請在下方先新增一個（例如店家名稱），再開始加入商品</div>`;
       }
+    } else if (cat.id === 'expenses') {
+      itemsHtml = renderExpenseToolbar(trip) + items.map((item, idx) => renderExpenseCompactItem(trip, cat, item, idx)).join('');
+      if(items.length===0) itemsHtml += `<div class="empty-cat">尚無手動記帳，按右下方「＋ 記一筆」開始</div>`;
     } else {
       itemsHtml = items.map((item, idx) => renderItemBlock(trip, cat, item, idx)).join('');
     }
@@ -2980,22 +3551,8 @@ function renderCategoryCard(trip, cat){
   const draft = ui.newItem[cat.id] || {};
   if(cat.type === 'expense'){
     addRowHtml = `
-      <div class="add-item-row-stack">
-        <div class="expense-meta-row">
-          <input type="date" value="${escapeAttr(draft.date||'')}" onchange="setDraftProp('${cat.id}', 'date', this.value)">
-          <input type="text" list="expense-cat-list" placeholder="類別（自訂）" value="${escapeAttr(draft.category||'')}" oninput="setDraftProp('${cat.id}', 'category', this.value)">
-          <input type="text" list="payment-list" placeholder="付款方式（自訂）" value="${escapeAttr(draft.payment||'')}" oninput="setDraftProp('${cat.id}', 'payment', this.value)">
-        </div>
-        <div class="add-item-row">
-          <textarea placeholder="品項名稱" rows="${Math.max(1,(draft.text||'').split('\n').length)}" oninput="setDraftProp('${cat.id}', 'text', this.value); autoGrowTextarea(this);">${escapeHtml(draft.text||'')}</textarea>
-          <input type="number" class="amt" placeholder="金額" value="${escapeAttr(draft.amount||'')}" oninput="setDraftProp('${cat.id}', 'amount', this.value)" onkeydown="if(event.key==='Enter') addItem('${cat.id}')">
-          <input type="text" class="cur" list="currency-list" placeholder="幣別" value="${escapeAttr(draft.currency||'')}" oninput="setDraftProp('${cat.id}', 'currency', this.value)" onkeydown="if(event.key==='Enter') addItem('${cat.id}')">
-          <button onclick="addItem('${cat.id}')">+</button>
-        </div>
-        ${renderChipRow(cat.id, 'category', categorySuggestions(trip), draft.category)}
-        ${renderChipRow(cat.id, 'payment', paymentSuggestions(trip), draft.payment)}
-        ${renderChipRow(cat.id, 'currency', currencySuggestions(trip), draft.currency)}
-      </div>
+      <button class="expense-add-fab" onclick="openExpenseAdd()">＋ 記一筆</button>
+      ${renderExpenseAddSheet(trip)}
     `;
   } else if(cat.type === 'itinerary') {
     addRowHtml = `
@@ -3048,9 +3605,10 @@ function renderCategoryCard(trip, cat){
     const totals = expenseTotalsByCurrency(trip);
     const manualCount = getManualExpenseItems(trip).length;
     extraFooter = `
+      ${ui.receivableOpen && ui.receivableFilter==='pending' ? renderReceivablePanel(trip) : ''}
       ${renderExpenseSummaryPanel(trip)}
       <div class="expense-total">
-        <div class="expense-total-label">總花費統計</div>
+        <div class="expense-total-label">總花費統計 <span class="grand-total-note">（旅途中個人花費＋旅行固定支出，已扣除待收款金額）</span></div>
         ${totals.length===0 ? '<div style="font-size:12px;color:var(--ink-soft);">尚無花費紀錄</div>' : 
           totals.map(([cur, amt])=>`<div class="summary-row"><span>${escapeHtml(cur)}</span><span>${amt.toLocaleString()}</span></div>`).join('')}
       </div>
@@ -3147,9 +3705,9 @@ function renderItemBlock(trip, cat, item, idx){
   }
 
   return `
-    <div class="item-block ${isDone ? 'done' : ''}" data-id="${item.id}"
+    <div class="item-block ${isDone ? 'done' : ''} ${cat.id==='expenses'&&item.isReceivable?(item.receivableStatus==='received'?'receivable-item received':'receivable-item'):''} ${cat.id==='expenses'&&!expensePassesReceivableFilter(item)?'expense-filter-hidden':''}" data-id="${item.id}"
       ${canDrag ? `ondragover="handleItemDragOver(event)" ondrop="handleItemDrop(event, '${cat.id}', ${idx})"` : ''}>
-      <div class="item-row">
+      <div class="item-row ${((cat.type==='checklist' && cat.id!=='packing' && cat.id!=='creditCard') || cat.type==='exchange' || cat.type==='itinerary') ? 'compact-checklist-row' : ''}">
         ${canDrag ? `
           <span class="item-drag-handle" draggable="true"
             ondragstart="handleItemDragStart(event, '${cat.id}', ${idx})"
@@ -3175,11 +3733,12 @@ function renderItemBlock(trip, cat, item, idx){
             ${(trip.categories.packing.subgroups||[]).map(sg=>`<option value="${escapeAttr(sg)}" ${item.subgroup===sg?'selected':''}>${escapeHtml(sg)}</option>`).join('')}
           </select>
         ` : ''}
+        ${cat.id==='expenses'&&item.isReceivable?`<span class="receivable-badge ${item.receivableStatus==='received'?'received':''}">${item.receivableStatus==='received'?'✓ 已收款':'⚠️ 待收款'}${item.receivablePerson?'｜'+escapeHtml(item.receivablePerson):''}</span>`:''}
         <button class="item-more" onclick="toggleExpand('${item.id}')" title="詳細備忘與連結">✎</button>
         <button class="item-delete" onclick="deleteItem('${cat.id}', '${item.id}')" title="刪除">✕</button>
       </div>
       ${(cat.type==='expense' || cat.type==='exchange' || (cat.type==='checklist' && cat.id !== 'creditCard' && cat.id !== 'packing')) ? `
-        <div class="item-meta-row">
+        <div class="item-meta-row ${(cat.type==='checklist' || cat.type==='exchange') ? 'compact-checklist-meta' : ''}">
           ${cat.type==='expense' ? `
             <input type="date" class="item-date" value="${escapeAttr(item.date||'')}" onchange="updateItem('${cat.id}', '${item.id}', 'date', this.value)">
           ` : ''}
@@ -3192,12 +3751,20 @@ function renderItemBlock(trip, cat, item, idx){
             <input type="text" class="item-currency" list="payment-list" value="${escapeAttr(item.payment||'')}" onchange="updateItem('${cat.id}', '${item.id}', 'payment', this.value)" placeholder="付款方式">
           </div>
         ` : ''}
+        ${cat.type==='expense'&&item.isReceivable?`<div class="receivable-inline">
+          <input type="text" placeholder="跟誰收？" value="${escapeAttr(item.receivablePerson||'')}" onchange="updateReceivableField('${item.id}','receivablePerson',this.value)">
+          <input type="number" placeholder="應收金額" value="${escapeAttr(item.receivableAmount||'')}" onchange="updateReceivableField('${item.id}','receivableAmount',this.value)">
+          <input class="wide" type="text" placeholder="待收款備註" value="${escapeAttr(item.receivableNote||'')}" onchange="updateReceivableField('${item.id}','receivableNote',this.value)">
+          <button type="button" class="receivable-status-btn" onclick="toggleReceivableStatus('${item.id}')">${item.receivableStatus==='received'?'↺ 改回待收款':'✓ 標記已收款'}</button>
+        </div>`:''}
       ` : ''}
       ${isExpanded ? `
         <div class="item-detail">
+          ${cat.id==='expenses'?`<label style="display:flex;align-items:center;gap:6px;font-size:11px;font-weight:700;margin-bottom:7px;"><input type="checkbox" ${item.isReceivable?'checked':''} onchange="updateReceivableField('${item.id}','isReceivable',this.checked)">這筆需要跟別人收錢</label>`:''}
           ${PHOTO_ENABLED_CATEGORY_IDS.includes(cat.id) ? `
             <div class="item-photo-block">
               <div class="shopping-img-wrap" onclick="triggerImageUpload('${item.id}')">
+        <button type="button" class="shopping-photo-pencil" onclick="event.stopPropagation(); triggerImageUpload('${item.id}')" title="更換照片">✎</button>
                 ${uploadingImageIds.has(item.id)
                   ? `<div class="shopping-img-placeholder">⬆️ 上傳中…</div>`
                   : (item.image
@@ -3227,6 +3794,7 @@ function renderShoppingCard(trip, cat, item) {
   const isDone = item.checked;
   return `
     <div class="shopping-card ${isDone ? 'done' : ''}">
+      <input type="checkbox" class="shopping-select-check" ${ui.batchSelected.has(item.id)?'checked':''} onchange="toggleBatchSelect('${item.id}', this.checked); render();" title="勾選以批次移動分類">
       <div class="shopping-img-wrap" onclick="triggerImageUpload('${item.id}')">
         ${uploadingImageIds.has(item.id)
           ? `<div class="shopping-img-placeholder">⬆️ 上傳中…</div>`
