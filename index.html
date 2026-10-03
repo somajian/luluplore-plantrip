@@ -1177,6 +1177,85 @@ input,textarea,select{font-family:inherit;}
   .cat-card[data-cat="routePlanning"] .compact-checklist-row .item-day{width:50px !important;min-width:50px !important}
 }
 
+
+/* ===== 恢復花費新增／展開編輯的柔和圓角設計 ===== */
+.expense-add-sheet{
+  background:#FFFDF7 !important;
+  border-radius:22px 22px 0 0 !important;
+  padding:18px !important;
+}
+.expense-add-grid,
+.expense-edit-grid{
+  gap:9px !important;
+}
+.expense-add-grid input,
+.expense-add-grid textarea,
+.expense-edit-grid input,
+.expense-edit-grid textarea{
+  border:1px solid #D8CBAA !important;
+  border-radius:12px !important;
+  background:#FFFEFA !important;
+  padding:10px 12px !important;
+  min-height:42px !important;
+  color:var(--ink) !important;
+  outline:none !important;
+  box-shadow:none !important;
+  box-sizing:border-box !important;
+}
+.expense-add-grid textarea,
+.expense-edit-grid textarea{
+  min-height:62px !important;
+  resize:vertical;
+}
+.expense-add-grid input:focus,
+.expense-add-grid textarea:focus,
+.expense-edit-grid input:focus,
+.expense-edit-grid textarea:focus{
+  border-color:#BBAA7C !important;
+  box-shadow:0 0 0 2px rgba(187,170,124,.12) !important;
+}
+.expense-add-grid input::placeholder,
+.expense-add-grid textarea::placeholder,
+.expense-edit-grid input::placeholder,
+.expense-edit-grid textarea::placeholder{
+  color:#B5A57E !important;
+}
+.expense-edit-panel{
+  background:#FFFDF7 !important;
+  border:1px solid #E2D7BA !important;
+  border-radius:16px !important;
+  padding:11px !important;
+}
+.expense-edit-panel .receivable-draft,
+.expense-add-sheet .receivable-draft{
+  border-radius:13px !important;
+  border-color:#E2D7BA !important;
+  background:#FFF8E7 !important;
+}
+.expense-edit-panel .receivable-draft input,
+.expense-add-sheet .receivable-draft input{
+  border-radius:10px !important;
+  border:1px solid #D8CBAA !important;
+  background:#FFFEFA !important;
+  padding:8px 10px !important;
+}
+.expense-add-submit{
+  border-radius:12px !important;
+  padding:11px 14px !important;
+}
+.expense-edit-actions button,
+.receivable-status-btn{
+  border-radius:10px !important;
+  padding:7px 10px !important;
+}
+@media(min-width:641px){
+  .expense-add-sheet{
+    margin-bottom:24px;
+    border-radius:20px !important;
+    border:1px solid #E2D7BA !important;
+  }
+}
+
 </style>
 </head>
 <body>
