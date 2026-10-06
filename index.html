@@ -1717,8 +1717,8 @@ function loadTrips(){
   return [];
 }
 
-function saveToSupabase() {
-  return syncToSupabase();
+function saveToSupabase(tripsToSave = state.trips) {
+  return syncToSupabase(tripsToSave);
 }
 
 function scheduleSave(){
