@@ -1772,6 +1772,7 @@ function scheduleSave(){
 }
 
 /* ===================== Supabase 同步與 Realtime 邏輯 ===================== */
+/* 協作者同步修正：owner 用 upsert；editor 僅 UPDATE 既有 trips row，不放寬 RLS */
 async function signInWithGoogle() {
   const redirectTo = window.location.origin + window.location.pathname;
   const { error } = await supabaseClient.auth.signInWithOAuth({
@@ -1902,12 +1903,46 @@ async function syncToSupabase(tripsToSave = state.trips) {
 
     if (payload.length === 0) return true;
 
-    const { error } = await supabaseClient
-      .from('trips')
-      .upsert(payload, { onConflict: 'id' });
+    // Owner / 新建立的行程可以走 upsert；
+    // 協作者編輯的是「已存在、屬於別人的行程」，只能走 UPDATE。
+    // 若協作者也使用 upsert，Postgres 會同時檢查 INSERT policy，
+    // 因此即使該 id 已存在，也可能得到：
+    // "new row violates row-level security policy for table trips"
+    // 這裡不放寬 RLS，只改成符合權限模型的寫法。
+    const ownerPayload = payload.filter(row => row.user_id === currentUser.id);
+    const collaboratorPayload = payload.filter(row => row.user_id !== currentUser.id);
+
+    let error = null;
+
+    if (ownerPayload.length > 0) {
+      const ownerResult = await supabaseClient
+        .from('trips')
+        .upsert(ownerPayload, { onConflict: 'id' });
+      if (ownerResult.error) error = ownerResult.error;
+    }
+
+    if (!error && collaboratorPayload.length > 0) {
+      // scheduleSave 在行程詳細頁通常只會送目前這一趟，
+      // 但這裡仍逐筆 UPDATE，避免一次更新時混淆不同 trip id。
+      for (const row of collaboratorPayload) {
+        const { id, ...changes } = row;
+        // 不讓協作者改寫 owner 欄位；只更新行程內容本身。
+        delete changes.user_id;
+
+        const collaboratorResult = await supabaseClient
+          .from('trips')
+          .update(changes)
+          .eq('id', id);
+
+        if (collaboratorResult.error) {
+          error = collaboratorResult.error;
+          break;
+        }
+      }
+    }
 
     if (error) {
-      console.error('Cloud Upsert Error:', error);
+      console.error('Cloud Save Error:', error);
       const upsertMsg = error.message || '';
       if(/jwt.*issued at future|issued at future/i.test(upsertMsg)){
         showToast('雲端同步失敗：你的裝置時間跟伺服器對不上，請到設定裡把日期與時間改成「自動設定」，再登出重新登入一次', true);
