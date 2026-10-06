@@ -1772,7 +1772,7 @@ function scheduleSave(){
 }
 
 /* ===================== Supabase 同步與 Realtime 邏輯 ===================== */
-/* 協作者同步修正：owner 用 upsert；editor 僅 UPDATE 既有 trips row，不放寬 RLS */
+/* 協作者同步修正：既有行程一律 UPDATE；只有本人新建且資料庫不存在的行程才 INSERT，不放寬 RLS */
 async function signInWithGoogle() {
   const redirectTo = window.location.origin + window.location.pathname;
   const { error } = await supabaseClient.auth.signInWithOAuth({
@@ -1883,81 +1883,72 @@ async function syncToSupabase(tripsToSave = state.trips) {
 
   try {
     const now = new Date().toISOString();
+    if (tripsToSave.length === 0) return true;
 
-    // 不論是擁有者還是協作者存檔，user_id 永遠沿用這趟行程原本的擁有者，
-    // 只有在這趟行程「本來就沒有 user_id」（也就是剛建立、還沒同步過）時，
-    // 才會用目前登入的人當擁有者。這樣協作者存檔不會不小心把擁有權改成自己，
-    // 同時協作者的編輯內容也能正常送上雲端（之前的寫法會把協作者的存檔整個排除掉，等於協作者存了也白存）。
-    const payload = tripsToSave.map(trip => {
+    // 協作者同步安全版：不再用前端 localStorage 裡的 user_id 判斷要 INSERT 還是 UPDATE。
+    // 每一趟存檔前，先向 Supabase 查「這個 id 是否已經存在、真正 owner 是誰」。
+    // 既有行程一律 UPDATE；只有資料庫真的不存在、而且是目前使用者自己新建的
+    // _localPending 行程，才允許 INSERT。這樣協作者永遠不會誤走 INSERT policy。
+    for (const trip of tripsToSave) {
+      if (!trip || !trip.id) continue;
       if (!trip.updated_at) trip.updated_at = now;
-      return {
-        id: trip.id,
-        user_id: trip.user_id || currentUser.id,
+
+      const { data: existingTrip, error: lookupError } = await supabaseClient
+        .from('trips')
+        .select('id,user_id')
+        .eq('id', trip.id)
+        .maybeSingle();
+
+      if (lookupError) throw lookupError;
+
+      const changes = {
         destination: trip.destination || '未命名行程',
         start_date: trip.startDate || null,
         end_date: trip.endDate || null,
         categories: trip.categories || emptyCategories(),
         updated_at: trip.updated_at
       };
-    });
 
-    if (payload.length === 0) return true;
-
-    // Owner / 新建立的行程可以走 upsert；
-    // 協作者編輯的是「已存在、屬於別人的行程」，只能走 UPDATE。
-    // 若協作者也使用 upsert，Postgres 會同時檢查 INSERT policy，
-    // 因此即使該 id 已存在，也可能得到：
-    // "new row violates row-level security policy for table trips"
-    // 這裡不放寬 RLS，只改成符合權限模型的寫法。
-    const ownerPayload = payload.filter(row => row.user_id === currentUser.id);
-    const collaboratorPayload = payload.filter(row => row.user_id !== currentUser.id);
-
-    let error = null;
-
-    if (ownerPayload.length > 0) {
-      const ownerResult = await supabaseClient
-        .from('trips')
-        .upsert(ownerPayload, { onConflict: 'id' });
-      if (ownerResult.error) error = ownerResult.error;
-    }
-
-    if (!error && collaboratorPayload.length > 0) {
-      // scheduleSave 在行程詳細頁通常只會送目前這一趟，
-      // 但這裡仍逐筆 UPDATE，避免一次更新時混淆不同 trip id。
-      for (const row of collaboratorPayload) {
-        const { id, ...changes } = row;
-        // 不讓協作者改寫 owner 欄位；只更新行程內容本身。
-        delete changes.user_id;
-
-        const collaboratorResult = await supabaseClient
+      if (existingTrip) {
+        // 已存在的 row，不論 owner / collaborator 都只走 UPDATE。
+        // user_id 完全不送出，避免任何前端舊資料改到擁有者。
+        const { error: updateError } = await supabaseClient
           .from('trips')
           .update(changes)
-          .eq('id', id);
+          .eq('id', trip.id);
 
-        if (collaboratorResult.error) {
-          error = collaboratorResult.error;
-          break;
-        }
-      }
-    }
+        if (updateError) throw updateError;
 
-    if (error) {
-      console.error('Cloud Save Error:', error);
-      const upsertMsg = error.message || '';
-      if(/jwt.*issued at future|issued at future/i.test(upsertMsg)){
-        showToast('雲端同步失敗：你的裝置時間跟伺服器對不上，請到設定裡把日期與時間改成「自動設定」，再登出重新登入一次', true);
-      } else if(isTransientNetworkError(upsertMsg)){
-        console.warn('暫時性網路問題，稍後自動重試（例如切去相簿選照片時連線被中斷）：', upsertMsg);
-        scheduleQuietRetry();
+        // 用資料庫查到的 owner 回寫本機，順便修掉舊 localStorage 可能留下的錯誤 user_id。
+        trip.user_id = existingTrip.user_id;
+        trip.role = existingTrip.user_id === currentUser.id ? 'owner' : (trip.role || 'editor');
       } else {
-        showToast('雲端同步失敗：' + upsertMsg, true);
+        // 查不到既有 row 時，只允許「本人這次新建、尚未上傳」的行程 INSERT。
+        const isOwnPendingNewTrip = trip._localPending === true &&
+          (!trip.user_id || trip.user_id === currentUser.id) &&
+          trip.role !== 'editor';
+
+        if (!isOwnPendingNewTrip) {
+          throw new Error('這趟共享行程目前無法在雲端找到，為避免誤新增資料，已停止同步，請重新整理後再試');
+        }
+
+        const insertPayload = {
+          id: trip.id,
+          user_id: currentUser.id,
+          ...changes
+        };
+
+        const { error: insertError } = await supabaseClient
+          .from('trips')
+          .insert(insertPayload);
+
+        if (insertError) throw insertError;
+        trip.user_id = currentUser.id;
+        trip.role = 'owner';
       }
-      return false;
     }
 
-    // 只有成功寫進 Supabase 後，才移除「本機待上傳」旗標。
-    // 這樣網路暫時失敗時，新建立的行程仍能留在本機等待下次重試；
-    // 但歷史 localStorage 資料不會因為沒有出現在雲端就被重新上傳。
+    // 全部成功後才移除待上傳旗標。
     const savedIds = new Set(tripsToSave.map(t => t.id));
     state.trips.forEach(t => {
       if (savedIds.has(t.id)) delete t._localPending;
@@ -1967,7 +1958,7 @@ async function syncToSupabase(tripsToSave = state.trips) {
     return true;
 
   } catch (err) {
-    console.error('Cloud Sync failed:', err);
+    console.error('Cloud Save Error:', err);
     const errMsg = (err && err.message) || '';
     if(/jwt.*issued at future|issued at future/i.test(errMsg)){
       showToast('雲端同步失敗：你的裝置時間跟伺服器對不上，請到設定裡把日期與時間改成「自動設定」，再登出重新登入一次', true);
@@ -1975,7 +1966,7 @@ async function syncToSupabase(tripsToSave = state.trips) {
       console.warn('暫時性網路問題，稍後自動重試（例如切去相簿選照片時連線被中斷）：', errMsg || err);
       scheduleQuietRetry();
     } else {
-      showToast('雲端同步失敗，請稍後再試', true);
+      showToast('雲端同步失敗：' + (errMsg || '未知錯誤'), true);
     }
     return false;
   } finally {
