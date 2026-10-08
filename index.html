@@ -1259,6 +1259,31 @@ input,textarea,select{font-family:inherit;}
   }
 }
 
+
+/* 行李清單：勾選、名稱、分類及操作鈕保持同列，縮短每個項目的高度 */
+.cat-card[data-cat="packing"] .compact-checklist-row{
+  grid-template-columns:auto auto minmax(0,1fr) minmax(72px,105px) auto auto !important;
+  align-items:center !important;
+  gap:5px !important;
+  min-height:34px !important;
+}
+.cat-card[data-cat="packing"] .compact-checklist-row .batch-checkbox{grid-column:1; margin:0 !important; align-self:center}
+.cat-card[data-cat="packing"] .compact-checklist-row .stamp-check{grid-column:2; margin:0 !important; align-self:center}
+.cat-card[data-cat="packing"] .compact-checklist-row .item-text{
+  grid-column:3; grid-row:1; min-width:0 !important;
+  min-height:30px !important; max-height:none !important;
+  height:auto; field-sizing:content;
+  white-space:pre-wrap; overflow-wrap:anywhere; word-break:break-word;
+  overflow:visible !important;
+}
+.cat-card[data-cat="packing"] .compact-checklist-row .item-subgroup-select{
+  grid-column:4; grid-row:1; width:100% !important; min-width:0 !important;
+  height:30px !important; min-height:30px !important; padding:3px 4px !important; margin:0 !important;
+}
+.cat-card[data-cat="packing"] .compact-checklist-row .item-more{grid-column:5; grid-row:1}
+.cat-card[data-cat="packing"] .compact-checklist-row .item-delete{grid-column:6; grid-row:1}
+.cat-card[data-cat="packing"] .item-block{padding-top:6px !important; padding-bottom:6px !important;}
+
 </style>
 </head>
 <body>
@@ -3824,7 +3849,7 @@ function renderItemBlock(trip, cat, item, idx){
   return `
     <div class="item-block ${isDone ? 'done' : ''} ${cat.id==='expenses'&&item.isReceivable?(item.receivableStatus==='received'?'receivable-item received':'receivable-item'):''} ${cat.id==='expenses'&&!expensePassesReceivableFilter(item)?'expense-filter-hidden':''}" data-id="${item.id}"
       ${canDrag ? `ondragover="handleItemDragOver(event)" ondrop="handleItemDrop(event, '${cat.id}', ${idx})"` : ''}>
-      <div class="item-row ${((cat.type==='checklist' && cat.id!=='packing' && cat.id!=='creditCard') || cat.type==='exchange' || cat.type==='itinerary') ? 'compact-checklist-row' : ''}">
+      <div class="item-row ${((cat.type==='checklist' && cat.id!=='creditCard') || cat.type==='exchange' || cat.type==='itinerary') ? 'compact-checklist-row' : ''}">
         ${canDrag ? `
           <span class="item-drag-handle" draggable="true"
             ondragstart="handleItemDragStart(event, '${cat.id}', ${idx})"
