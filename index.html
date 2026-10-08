@@ -1284,6 +1284,17 @@ input,textarea,select{font-family:inherit;}
 .cat-card[data-cat="packing"] .compact-checklist-row .item-delete{grid-column:6; grid-row:1}
 .cat-card[data-cat="packing"] .item-block{padding-top:6px !important; padding-bottom:6px !important;}
 
+
+/* 行李清單：移除重複的逐筆分類選單，保留批次移動分類 */
+.cat-card[data-cat="packing"] .compact-checklist-row{
+  grid-template-columns:auto auto minmax(0,1fr) auto auto !important;
+}
+.cat-card[data-cat="packing"] .compact-checklist-row .item-more{
+  grid-column:4 !important; grid-row:1 !important;
+}
+.cat-card[data-cat="packing"] .compact-checklist-row .item-delete{
+  grid-column:5 !important; grid-row:1 !important;
+}
 </style>
 </head>
 <body>
@@ -2177,7 +2188,8 @@ async function syncFromSupabase(isRealtimeTrigger = false) {
       localOnlyTrips.push(localTrip);
     });
 
-    state.trips = Array.from(mergedMap.values());
+    await fetchAccountTripOrder();
+    state.trips = applySavedTripOrder(Array.from(mergedMap.values()));
 
     // 如果原本正停在一趟已失去權限/已刪除的舊行程，安全回到列表，
     // 避免 detail render 找不到 trip 時整個主畫面變空白。
@@ -3231,6 +3243,46 @@ function importJSON(e){
   reader.readAsText(file);
 }
 
+/* 行程排序存於 Supabase Auth user_metadata，跟帳號跨裝置同步；
+   只寫入使用者自己的偏好，不修改行程內容或協作者權限。 */
+const TRIP_ORDER_META_KEY = 'luluplore_trip_order_v1';
+let accountTripOrder = [];
+let tripOrderSaving = false;
+async function fetchAccountTripOrder(){
+  if(!currentUser || !supabaseClient) return;
+  try {
+    const {data,error} = await supabaseClient.auth.getUser();
+    if(error) throw error;
+    if(data?.user?.id !== currentUser.id) return;
+    const order = data.user.user_metadata?.[TRIP_ORDER_META_KEY];
+    accountTripOrder = Array.isArray(order) ? order.filter(id=>typeof id==='string') : [];
+  } catch(e) { console.warn('讀取帳號行程排序失敗',e); }
+}
+function applySavedTripOrder(trips){
+  const positions = new Map(accountTripOrder.map((id,index)=>[id,index]));
+  return trips.map((trip,index)=>({trip,index})).sort((a,b)=>{
+    const ai = positions.has(a.trip.id) ? positions.get(a.trip.id) : Number.MAX_SAFE_INTEGER;
+    const bi = positions.has(b.trip.id) ? positions.get(b.trip.id) : Number.MAX_SAFE_INTEGER;
+    return ai-bi || a.index-b.index;
+  }).map(x=>x.trip);
+}
+async function saveTripOrder(){
+  if(!currentUser || !supabaseClient){ showToast('請先登入帳號才能同步行程排序',true); return; }
+  if(tripOrderSaving) return;
+  tripOrderSaving = true;
+  const previousOrder = accountTripOrder.slice();
+  const nextOrder = state.trips.map(t=>t.id);
+  accountTripOrder = nextOrder;
+  try {
+    const {error} = await supabaseClient.auth.updateUser({data:{[TRIP_ORDER_META_KEY]:nextOrder}});
+    if(error) throw error;
+    showToast('行程順序已同步至帳號');
+  } catch(e){
+    accountTripOrder = previousOrder;
+    showToast('行程順序雲端儲存失敗：'+(e.message||e),true);
+  } finally { tripOrderSaving = false; }
+}
+
 /* ===================== Drag & Drop 行程卡片排序 ===================== */
 let draggedTripIndex = null;
 
@@ -3258,7 +3310,9 @@ function handleDrop(e, targetIndex) {
   state.trips.splice(targetIndex, 0, movedTrip);
 
   draggedTripIndex = null;
-  scheduleSave();
+  saveTripOrder();
+  // 排序儲存在 Supabase 帳號 metadata，其他裝置重新登入或同步後一致。
+  saveLocalCache(state.trips);
   render();
 }
 
@@ -3869,14 +3923,8 @@ function renderItemBlock(trip, cat, item, idx){
         <textarea class="item-text" rows="${textRows}"
           oninput="autoGrowTextarea(this);"
           onchange="updateItem('${cat.id}', '${item.id}', 'text', this.value)">${escapeHtml(item.text)}</textarea>
-        ${cat.id==='packing' ? `
-          <select class="item-subgroup-select" onchange="moveSingleItemSubgroup('${cat.id}', '${item.id}', this.value)" title="移動到其他分類">
-            <option value="" ${!item.subgroup ? 'selected':''}>未分組</option>
-            ${(trip.categories.packing.subgroups||[]).map(sg=>`<option value="${escapeAttr(sg)}" ${item.subgroup===sg?'selected':''}>${escapeHtml(sg)}</option>`).join('')}
-          </select>
-        ` : ''}
         ${cat.id==='expenses'&&item.isReceivable?`<span class="receivable-badge ${item.receivableStatus==='received'?'received':''}">${item.receivableStatus==='received'?'✓ 已收款':'⚠️ 待收款'}${item.receivablePerson?'｜'+escapeHtml(item.receivablePerson):''}</span>`:''}
-        <button class="item-more" onclick="toggleExpand('${item.id}')" title="詳細備忘與連結">✎</button>
+        <button class="item-more" onclick="toggleExpand('${item.id}')" title="${cat.id==='packing' ? '編輯備註' : '詳細備忘與連結'}">✎</button>
         <button class="item-delete" onclick="deleteItem('${cat.id}', '${item.id}')" title="刪除">✕</button>
       </div>
       ${(cat.type==='expense' || cat.type==='exchange' || (cat.type==='checklist' && cat.id !== 'creditCard' && cat.id !== 'packing')) ? `
@@ -3917,14 +3965,14 @@ function renderItemBlock(trip, cat, item, idx){
               <input type="file" id="img-input-${item.id}" class="img-upload-input" accept="image/*" onchange="handleImageUpload('${cat.id}', '${item.id}', event)">
             </div>
           ` : ''}
-          ${item.link ? `
+          ${cat.id==='packing' ? '' : (item.link ? `
             <div class="item-link-display">
               <a href="${escapeAttr(normalizeUrl(item.link))}" target="_blank" rel="noopener noreferrer" class="item-link-anchor" title="${escapeAttr(item.link)}">🔗 ${escapeHtml(item.link)}</a>
               <button class="item-link-delete" onclick="deleteItemLink('${cat.id}', '${item.id}')" title="刪除連結，重新貼上新的">✕</button>
             </div>
           ` : `
             <input type="text" class="item-link" value="" onchange="updateItem('${cat.id}', '${item.id}', 'link', this.value)" placeholder="相關連結 URL (如地圖、訂單)">
-          `}
+          `)}
           <textarea class="item-note" onchange="updateItem('${cat.id}', '${item.id}', 'note', this.value)" placeholder="備註說明...">${escapeHtml(item.note||'')}</textarea>
         </div>
       ` : ''}
