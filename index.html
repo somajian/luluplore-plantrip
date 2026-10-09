@@ -1831,9 +1831,21 @@ function backupGuestTripsBeforeLogin(){
   if(currentUser || !state.trips.length) return true;
   const existing=getGuestTransfer();
   if(existing && existing.trips.length){
-    // 未處理的舊備份不能被新的訪客資料覆蓋
-    showToast('仍有尚未處理的訪客行程備份，請先完成轉移或匯出 JSON',true);
-    return false;
+    // 已有獨立備份時允許登入；合併本次訪客行程，避免覆蓋舊備份
+    const merged=new Map(existing.trips.map(t=>[t.id,t]));
+    for(const t of state.trips){
+      // 若同一趟行程仍在訪客模式編輯，以目前畫面內容為準
+      merged.set(t.id,t);
+    }
+    try{
+      localStorage.setItem(GUEST_TRANSFER_KEY,JSON.stringify({trips:Array.from(merged.values()),createdAt:existing.createdAt||new Date().toISOString()}));
+      return true;
+    }catch(e){
+      // 既有備份仍在，不能因為備份已存在就卡住登入
+      console.warn('無法更新訪客備份，保留先前備份',e);
+      showToast('訪客備份未能更新，請確認剛匯出的 JSON 包含最新行程',true);
+      return true;
+    }
   }
   try{
     localStorage.setItem(GUEST_TRANSFER_KEY,JSON.stringify({trips:JSON.parse(JSON.stringify(state.trips)),createdAt:new Date().toISOString()}));
