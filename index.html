@@ -1822,81 +1822,7 @@ function scheduleSave(){
 
 /* ===================== Supabase 同步與 Realtime 邏輯 ===================== */
 /* 協作者同步修正：owner 用 upsert；editor 僅 UPDATE 既有 trips row，不放寬 RLS */
-/* 訪客行程安全轉移：獨立備份，不混入登入後的雲端快取 */
-const GUEST_TRANSFER_KEY = 'luluplore_guest_transfer_v1';
-function getGuestTransfer(){
-  try { const x=JSON.parse(localStorage.getItem(GUEST_TRANSFER_KEY)||'null'); return x && Array.isArray(x.trips) ? x : null; }catch(e){ return null; }
-}
-function backupGuestTripsBeforeLogin(){
-  if(currentUser || !state.trips.length) return true;
-  const existing=getGuestTransfer();
-  if(existing && existing.trips.length){
-    // 已有獨立備份時允許登入；合併本次訪客行程，避免覆蓋舊備份
-    const merged=new Map(existing.trips.map(t=>[t.id,t]));
-    for(const t of state.trips){
-      // 若同一趟行程仍在訪客模式編輯，以目前畫面內容為準
-      merged.set(t.id,t);
-    }
-    try{
-      localStorage.setItem(GUEST_TRANSFER_KEY,JSON.stringify({trips:Array.from(merged.values()),createdAt:existing.createdAt||new Date().toISOString()}));
-      return true;
-    }catch(e){
-      // 既有備份仍在，不能因為備份已存在就卡住登入
-      console.warn('無法更新訪客備份，保留先前備份',e);
-      showToast('訪客備份未能更新，請確認剛匯出的 JSON 包含最新行程',true);
-      return true;
-    }
-  }
-  try{
-    localStorage.setItem(GUEST_TRANSFER_KEY,JSON.stringify({trips:JSON.parse(JSON.stringify(state.trips)),createdAt:new Date().toISOString()}));
-    return true;
-  }catch(e){
-    showToast('訪客資料備份失敗，可能是本機空間已滿！請先匯出 JSON，避免登入後資料遺失',true);
-    return false;
-  }
-}
-let guestTransferPromptShown=false;
-function showGuestTransferPrompt(){
-  const backup=getGuestTransfer();
-  if(!currentUser || !backup || !backup.trips.length || guestTransferPromptShown) return;
-  guestTransferPromptShown=true;
-  const old=document.getElementById('guest-transfer-overlay'); if(old) old.remove();
-  const overlay=document.createElement('div');overlay.id='guest-transfer-overlay';
-  overlay.style.cssText='position:fixed;inset:0;z-index:99999;background:rgba(20,31,51,.62);display:flex;align-items:center;justify-content:center;padding:18px';
-  overlay.innerHTML=`<section style="background:#fffaf0;border:2px solid #d9c18a;border-radius:20px;padding:24px;max-width:470px;width:100%;color:#1e2d4a;box-shadow:0 12px 45px #0003">
-    <h2 style="margin:0 0 12px;font-size:22px">🧳 找到訪客行程備份</h2>
-    <p style="line-height:1.7">這台裝置有 <b>${backup.trips.length}</b> 趟登入前建立的行程。要將它們加入目前的 Google 帳號嗎？<br>原本的雲端行程會保留，不會覆蓋。</p>
-    <p style="font-size:13px;color:#9b6b24">請先確認登入的是自己的帳號。轉移完成並確認雲端保存後才會移除訪客備份。</p>
-    <div style="display:flex;flex-wrap:wrap;gap:9px"><button id="guest-transfer-import" style="background:#2b756f;color:white;border:0;border-radius:10px;padding:12px 16px;cursor:pointer">匯入目前帳號</button><button id="guest-transfer-later" style="border:1px solid #cbb785;background:white;border-radius:10px;padding:12px;cursor:pointer">稍後再說（保留備份）</button></div>
-    <p id="guest-transfer-status" role="status" style="font-size:13px;line-height:1.6"></p></section>`;
-  document.body.appendChild(overlay);
-  document.getElementById('guest-transfer-later').onclick=()=>overlay.remove();
-  document.getElementById('guest-transfer-import').onclick=async()=>{
-    const btn=document.getElementById('guest-transfer-import');const status=document.getElementById('guest-transfer-status');btn.disabled=true;btn.textContent='正在匯入雲端…';
-    try{
-      const b=getGuestTransfer();if(!b || !currentUser) throw Error('找不到訪客備份或尚未登入');
-      const owner=currentUser.id;
-      const {data:remote,error:readErr}=await supabaseClient.from('trips').select('id').eq('user_id',owner);
-      if(readErr) throw readErr;
-      const existingIds=new Set((remote||[]).map(x=>x.id));
-      const toUpload=b.trips.filter(t=>!existingIds.has(t.id)).map(t=>({...t,user_id:owner,role:'owner',_localPending:true}));
-      if(toUpload.length){
-        // 不修改既有雲端行程，避免同 ID 覆蓋；批次匯入需確認寫入成功
-        const ok=await syncToSupabase(toUpload);
-        if(!ok) throw Error('雲端寫入失敗，備份仍保留');
-      }
-      const {data:verified,error:verifyErr}=await supabaseClient.from('trips').select('id').eq('user_id',owner);
-      if(verifyErr) throw verifyErr;
-      const verifiedIds=new Set((verified||[]).map(x=>x.id));
-      if(!b.trips.every(t=>verifiedIds.has(t.id))) throw Error('尚未確認所有行程已儲存至雲端');
-      await loadFromSupabase();
-      localStorage.removeItem(GUEST_TRANSFER_KEY);
-      overlay.remove();showToast('訪客行程已成功加入雲端帳號！');
-    }catch(e){console.error('訪客轉移失敗',e);status.textContent='⚠️ '+(e.message||'匯入失敗')+'，訪客備份仍保留，請稍後重試或匯出 JSON';btn.disabled=false;btn.textContent='重新嘗試匯入';}
-  };
-}
 async function signInWithGoogle() {
-  if(!backupGuestTripsBeforeLogin()) return;
   const redirectTo = window.location.origin + window.location.pathname;
   const { error } = await supabaseClient.auth.signInWithOAuth({
     provider: 'google',
@@ -2388,7 +2314,6 @@ supabaseClient.auth.onAuthStateChange((event, session) => {
 
         await loadFromSupabase();
         subscribeRealtime();
-        showGuestTransferPrompt();
       } catch (err) {
         console.error('Auth sync initialization error:', err);
         showToast('登入成功，但雲端同步初始化失敗：' + (err.message || '未知錯誤'), true);
@@ -3563,7 +3488,6 @@ function renderAuthBar(){
         `}
       </div>
     </div>
-    ${!currentUser ? `<div style="background:#fff4d7;border:1px solid #d8c18b;border-radius:12px;padding:11px 15px;margin:8px 0 15px;color:#705623;font-size:13px;line-height:1.65">💡 <b>訪客試用提醒</b><div style="margin-top:6px">未登入時，旅行資料僅儲存在目前的瀏覽器中<br>無法跨裝置同步</div><div style="margin-top:8px">若清除瀏覽器資料或儲存空間不足<br>可能造成資料遺失</div><div style="margin-top:8px">建議先匯出 JSON 備份<br>再登入 Google 帳號，將訪客行程匯入雲端 ☁️</div></div>` : ''}
   `;
 }
 
@@ -3621,6 +3545,12 @@ function renderTripList(){
       <button onclick="exportJSON()">📥 匯出 JSON 備份</button>
       <button onclick="document.getElementById('import-input').click()">📤 匯入 JSON 備份</button>
     </div>
+    ${!currentUser ? `
+      <div style="margin:14px 0 18px;padding:16px 20px;border:1px solid #dfc88d;border-radius:12px;background:#fff5d9;color:#805b24;line-height:1.85;font-size:14px;">
+        <div style="font-weight:800;margin-bottom:5px;">💡 訪客試用提醒</div>
+        <div>未登入時，旅行資料僅儲存在目前的瀏覽器中<br>無法跨裝置同步<br>若清除瀏覽器資料或儲存空間不足<br>可能造成資料遺失<br>建議先匯出 JSON 備份<br>再登入 Google 帳號，將訪客行程匯入雲端 ☁️</div>
+      </div>
+    ` : ''}
     <div class="tagline-dash"></div>
     ${state.trips.length===0 ? '<p class="empty-hint">目前沒有任何行程，立即在下方新增第一個旅程吧！</p>' : ''}
     <div class="grid">
