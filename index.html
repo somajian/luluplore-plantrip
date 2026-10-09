@@ -1295,6 +1295,16 @@ input,textarea,select{font-family:inherit;}
 .cat-card[data-cat="packing"] .compact-checklist-row .item-delete{
   grid-column:5 !important; grid-row:1 !important;
 }
+
+/* 旅行卡片及行李／購物群組的觸控友善排序控制 */
+.trip-order-controls{position:absolute;right:7px;bottom:8px;display:flex;gap:4px;z-index:3}
+.trip-order-controls button,.subgroup-order-btn{background:#fffdf6;border:1px solid #d8c592;color:var(--ink);border-radius:7px;cursor:pointer;min-width:27px;min-height:29px;font-size:16px;line-height:1}
+.trip-order-controls button:disabled,.subgroup-order-btn:disabled{opacity:.3;cursor:default}
+.subgroup-header{gap:6px;min-width:0}
+.subgroup-header-left{min-width:0;flex:1}
+.subgroup-title-input{min-width:0;width:100%;flex:1}
+.subgroup-actions{display:flex;align-items:center;gap:4px;flex-shrink:0}
+.subgroup-actions .subgroup-delete{flex-shrink:0;white-space:nowrap;font-size:15px;padding:5px 7px}
 </style>
 </head>
 <body>
@@ -3248,6 +3258,7 @@ function importJSON(e){
 const TRIP_ORDER_META_KEY = 'luluplore_trip_order_v1';
 let accountTripOrder = [];
 let tripOrderSaving = false;
+let tripOrderSaveQueued = false;
 async function fetchAccountTripOrder(){
   if(!currentUser || !supabaseClient) return;
   try {
@@ -3268,19 +3279,47 @@ function applySavedTripOrder(trips){
 }
 async function saveTripOrder(){
   if(!currentUser || !supabaseClient){ showToast('請先登入帳號才能同步行程排序',true); return; }
-  if(tripOrderSaving) return;
+  if(tripOrderSaving){ tripOrderSaveQueued = true; return; }
   tripOrderSaving = true;
-  const previousOrder = accountTripOrder.slice();
-  const nextOrder = state.trips.map(t=>t.id);
-  accountTripOrder = nextOrder;
   try {
-    const {error} = await supabaseClient.auth.updateUser({data:{[TRIP_ORDER_META_KEY]:nextOrder}});
-    if(error) throw error;
+    do {
+      tripOrderSaveQueued = false;
+      const nextOrder = state.trips.map(t=>t.id);
+      const {error} = await supabaseClient.auth.updateUser({data:{[TRIP_ORDER_META_KEY]:nextOrder}});
+      if(error) throw error;
+      accountTripOrder = nextOrder;
+    } while(tripOrderSaveQueued);
     showToast('行程順序已同步至帳號');
   } catch(e){
-    accountTripOrder = previousOrder;
     showToast('行程順序雲端儲存失敗：'+(e.message||e),true);
-  } finally { tripOrderSaving = false; }
+  } finally {
+    tripOrderSaving = false;
+    if(tripOrderSaveQueued){ tripOrderSaveQueued = false; saveTripOrder(); }
+  }
+}
+
+function moveTripByArrow(index, direction, event){
+  if(event) event.stopPropagation();
+  const target=index+direction;
+  if(target<0 || target>=state.trips.length) return;
+  const temp=state.trips[index];state.trips[index]=state.trips[target];state.trips[target]=temp;
+  saveLocalCache(state.trips);
+  render();
+  saveTripOrder();
+}
+function moveSubgroupByArrow(catId, subgroup, direction, event){
+  if(event) event.stopPropagation();
+  const trip=state.trips.find(t=>t.id===state.currentTripId);
+  if(!trip || !trip.categories || !trip.categories[catId]) return;
+  const groups=trip.categories[catId].subgroups;
+  if(!Array.isArray(groups)) return;
+  const index=groups.indexOf(subgroup), target=index+direction;
+  if(index<0 || target<0 || target>=groups.length) return;
+  [groups[index],groups[target]]=[groups[target],groups[index]];
+  // 先保存本機排序，避免訪客模式或重新整理後順序還原
+  saveLocalCache(state.trips);
+  scheduleSave();
+  render();
 }
 
 /* ===================== Drag & Drop 行程卡片排序 ===================== */
@@ -3465,11 +3504,7 @@ function renderTripList(){
 
     gridHtml += `
       <div class="trip-card" onclick="openTrip('${t.id}')"
-           draggable="true"
-           ondragstart="handleDragStart(event, ${idx})"
-           ondragover="handleDragOver(event)"
-           ondrop="handleDrop(event, ${idx})"
-           ondragend="handleDragEnd(event)">
+>
         <div class="tag-hole"></div>
         <button class="trip-duplicate" onclick="duplicateTrip('${t.id}', event)" title="複製這趟行程">⧉</button>
         <button class="trip-delete" onclick="deleteTrip('${t.id}', event)" title="刪除行程">✕</button>
@@ -3481,7 +3516,10 @@ function renderTripList(){
           <span class="stub-progress">${pct}%</span>
           <span class="stub-label">READY</span>
         </div>
-        <div class="drag-handle" title="拖曳以調整順序" onclick="event.stopPropagation()">⋮⋮</div>
+        <div class="trip-order-controls" onclick="event.stopPropagation()">
+          <button type="button" title="行程上移" aria-label="行程上移" ${idx===0?'disabled':''} onclick="moveTripByArrow(${idx},-1,event)">↑</button>
+          <button type="button" title="行程下移" aria-label="行程下移" ${idx===state.trips.length-1?'disabled':''} onclick="moveTripByArrow(${idx},1,event)">↓</button>
+        </div>
       </div>
     `;
   });
@@ -3510,6 +3548,12 @@ function renderTripList(){
       <button onclick="exportJSON()">📥 匯出 JSON 備份</button>
       <button onclick="document.getElementById('import-input').click()">📤 匯入 JSON 備份</button>
     </div>
+    ${!currentUser ? `
+      <div style="margin:14px 0 18px;padding:16px 20px;border:1px solid #dfc88d;border-radius:12px;background:#fff5d9;color:#805b24;line-height:1.85;font-size:14px;">
+        <div style="font-weight:800;margin-bottom:5px;">💡 訪客試用提醒</div>
+        <div>未登入時，旅行資料僅儲存在目前的瀏覽器中<br>無法跨裝置同步<br>若清除瀏覽器資料或儲存空間不足<br>可能造成資料遺失<br>建議先匯出 JSON 備份<br>再登入 Google 帳號，將訪客行程匯入雲端 ☁️</div>
+      </div>
+    ` : ''}
     <div class="tagline-dash"></div>
     ${state.trips.length===0 ? '<p class="empty-hint">目前沒有任何行程，立即在下方新增第一個旅程吧！</p>' : ''}
     <div class="grid">
@@ -3653,7 +3697,11 @@ function renderCategoryCard(trip, cat){
                        onchange="renameSubgroup('${cat.id}', '${escapeJsAttr(subgroup)}', this.value)" placeholder="群組名稱">
                 <span style="font-size:11px;color:var(--ink-soft);font-weight:normal;">(${subItems.filter(i=>i.checked).length}/${subItems.length})</span>
               </div>
-              <button class="subgroup-delete" onclick="event.stopPropagation(); deleteSubgroup('${cat.id}', '${escapeJsAttr(subgroup)}')">刪除群組</button>
+              <div class="subgroup-actions" onclick="event.stopPropagation()">
+                <button class="subgroup-order-btn" title="群組上移" aria-label="群組上移" ${subgroups.indexOf(subgroup)===0?'disabled':''} onclick="moveSubgroupByArrow('${cat.id}', '${escapeJsAttr(subgroup)}',-1,event)">↑</button>
+                <button class="subgroup-order-btn" title="群組下移" aria-label="群組下移" ${subgroups.indexOf(subgroup)===subgroups.length-1?'disabled':''} onclick="moveSubgroupByArrow('${cat.id}', '${escapeJsAttr(subgroup)}',1,event)">↓</button>
+                <button class="subgroup-delete" title="刪除群組" aria-label="刪除群組" onclick="event.stopPropagation(); deleteSubgroup('${cat.id}', '${escapeJsAttr(subgroup)}')">✕</button>
+              </div>
             </div>
             ${!isCollapsed ? `
               <div class="subgroup-items">
@@ -3707,7 +3755,11 @@ function renderCategoryCard(trip, cat){
                        onchange="renameSubgroup('${cat.id}', '${escapeJsAttr(subgroup)}', this.value)" placeholder="店家/分類名稱">
                 <span style="font-size:11px;color:var(--ink-soft);font-weight:normal;">(${subItems.filter(i=>i.checked).length}/${subItems.length})</span>
               </div>
-              <button class="subgroup-delete" onclick="event.stopPropagation(); deleteSubgroup('${cat.id}', '${escapeJsAttr(subgroup)}')">刪除群組</button>
+              <div class="subgroup-actions" onclick="event.stopPropagation()">
+                <button class="subgroup-order-btn" title="群組上移" aria-label="群組上移" ${subgroups.indexOf(subgroup)===0?'disabled':''} onclick="moveSubgroupByArrow('${cat.id}', '${escapeJsAttr(subgroup)}',-1,event)">↑</button>
+                <button class="subgroup-order-btn" title="群組下移" aria-label="群組下移" ${subgroups.indexOf(subgroup)===subgroups.length-1?'disabled':''} onclick="moveSubgroupByArrow('${cat.id}', '${escapeJsAttr(subgroup)}',1,event)">↓</button>
+                <button class="subgroup-delete" title="刪除群組" aria-label="刪除群組" onclick="event.stopPropagation(); deleteSubgroup('${cat.id}', '${escapeJsAttr(subgroup)}')">✕</button>
+              </div>
             </div>
             ${!isCollapsed ? `
               <div class="shopping-grid">
