@@ -1335,6 +1335,18 @@ input,textarea,select{font-family:inherit;}
 .lulu-rewards-modal-card .lulu-rewards-conditions{margin-top:16px;font-size:13px}
 .lulu-rewards-modal-card .lulu-rewards-details{font-size:12px}
 @media(max-width:600px){.lulu-rewards-modal-overlay{padding:0;align-items:flex-end}.lulu-rewards-modal{width:100%;height:94dvh;max-height:94dvh;border-radius:24px 24px 0 0}.lulu-rewards-modal-head{padding:21px 18px 14px}.lulu-rewards-modal-head h2{font-size:21px}.lulu-rewards-modal-list{grid-template-columns:1fr;padding:14px 16px 26px}.lulu-rewards-modal-card{padding:17px}.lulu-rewards-modal-head button{padding:9px 11px}}
+
+/* Registration details visible before choosing a card */
+.lulu-rewards-reg-info{display:flex;flex-wrap:wrap;align-items:center;gap:7px;margin:0 0 12px}
+.lulu-rewards-reg-info small{flex-basis:100%;color:#657481;font-size:11px;line-height:1.55;overflow-wrap:anywhere}
+.lulu-rewards-reg-badge{display:inline-flex;align-items:center;border-radius:999px;padding:4px 9px;font-size:12px;font-weight:700;line-height:1.5}
+.lulu-rewards-reg-badge.need-reg{background:#fff0da;color:#93601f}
+.lulu-rewards-reg-badge.limited{background:#fff0ed;color:#a64f43}
+.lulu-rewards-reg-badge.no-reg{background:#edf5ef;color:#386e59;margin-bottom:12px}
+.lulu-rewards-picker-register{display:flex;align-items:center;gap:9px;margin:0 0 14px;padding:10px 12px;background:#fff9ec;border:1px solid #e7d9b9;border-radius:11px;color:#2a4652;font-size:13px;font-weight:650;cursor:pointer;line-height:1.5}
+.lulu-rewards-picker-register input{width:18px;height:18px;flex:0 0 18px;accent-color:#2f756d}
+.lulu-rewards-register{display:flex;align-items:center;gap:8px;flex-wrap:wrap;line-height:1.5}
+.lulu-rewards-register input{flex:0 0 auto}
 </style></head>
 <body>
 <div id="app"></div>
@@ -3781,14 +3793,29 @@ function renderRewardHub(t){let st=rewardStore(t);let selected=rewardOptions(t);
 <div class="lulu-rewards-title">💳 我的旅行信用卡 <span>${selected.length} 張</span></div>
 <button type="button" class="lulu-rewards-open" onclick="rewardOpenPicker()"><span class="lulu-rewards-open-label">＋ 從 Lulu 精選 30 個信用卡方案加入</span><span class="lulu-rewards-open-link">查看方案 ↗</span></button>
 ${currencies.length?`<div class="lulu-rewards-rates"><b>外幣換算</b><div class="lulu-rewards-rates-note">預設自動採用最新參考匯率<br>需要時可自行輸入匯率覆蓋<br>（僅用於信用卡額度統計）</div>${currencies.map(cur=>`<label>1 ${rewardEscape(cur)} = <input type="number" min="0" step="0.0001" placeholder="自動換算" value="${st.rates[cur]||''}" onchange="rewardRate('${rewardEscape(cur)}',this.value)"> TWD <small>${rewardFxStatus(st,cur,t)}</small></label>`).join('')}</div>`:''}
-${selected.length?selected.map(c=>{let used=rewardSpend(t,c.id),before=Number(st.before[c.id])||0,total=used+before,cap=Number(c.cap)||0,pct=cap?Math.min(100,total/cap*100):0,expired=c.valid&&new Date(c.valid+'T23:59:59')<new Date();return `<div class="lulu-rewards-card"><div class="lulu-rewards-card-head"><strong>${rewardEscape(c.name)}｜${c.pct}%</strong><button onclick="rewardChoose('${c.id}',false)">移除</button></div><small>${rewardEscape(c.region)}｜活動期限 ${rewardEscape(c.valid)} ${expired?'｜⚠️ 已過期':''}</small><div class="lulu-rewards-stats"><div>本趟記帳已刷 <b>NT$${Math.round(used).toLocaleString()}</b></div><div class="lulu-rewards-before">出發前已刷 <input type="number" min="0" placeholder="0" value="${before||''}" onchange="rewardBefore('${c.id}',this.value)"></div></div>${cap?`<div class="lulu-rewards-bar"><i style="width:${pct}%"></i></div><small>已計入 NT$${Math.round(total).toLocaleString()}／額度 NT$${cap.toLocaleString()}</small><small class="lulu-rewards-remaining">剩餘 NT$${Math.max(0,Math.round(cap-total)).toLocaleString()}</small>`:'<small>未設定可刷上限</small>'}${c.registration?`<label class="lulu-rewards-register"><input type="checkbox" ${st.registered[c.id]?'checked':''} onchange="rewardRegistered('${c.id}',this.checked)"> 我已自行完成銀行活動登錄　<small>${rewardEscape(c.registration)}</small></label>`:''}${rewardDetails(c)}</div>`}).join(''):'<div class="lulu-rewards-empty">先加入這趟會使用的信用卡<br>記帳時就能直接選擇付款卡片</div>'}
+${selected.length?selected.map(c=>{let used=rewardSpend(t,c.id),before=Number(st.before[c.id])||0,total=used+before,cap=Number(c.cap)||0,pct=cap?Math.min(100,total/cap*100):0,expired=c.valid&&new Date(c.valid+'T23:59:59')<new Date();return `<div class="lulu-rewards-card"><div class="lulu-rewards-card-head"><strong>${rewardEscape(c.name)}｜${c.pct}%</strong><button onclick="rewardChoose('${c.id}',false)">移除</button></div><small>${rewardEscape(c.region)}｜活動期限 ${rewardEscape(c.valid)} ${expired?'｜⚠️ 已過期':''}</small><div class="lulu-rewards-stats"><div>本趟記帳已刷 <b>NT$${Math.round(used).toLocaleString()}</b></div><div class="lulu-rewards-before">出發前已刷 <input type="number" min="0" placeholder="0" value="${before||''}" onchange="rewardBefore('${c.id}',this.value)"></div></div>${cap?`<div class="lulu-rewards-bar"><i style="width:${pct}%"></i></div><small>已計入 NT$${Math.round(total).toLocaleString()}／額度 NT$${cap.toLocaleString()}</small><small class="lulu-rewards-remaining">剩餘 NT$${Math.max(0,Math.round(cap-total)).toLocaleString()}</small>`:'<small>未設定可刷上限</small>'}${c.registration?`<label class="lulu-rewards-register"><input type="checkbox" ${st.registered[c.id]?'checked':''} onchange="rewardRegistered('${c.id}',this.checked)"> 已完成銀行活動登錄</label>`:''}${rewardDetails(c)}</div>`}).join(''):'<div class="lulu-rewards-empty">先加入這趟會使用的信用卡<br>記帳時就能直接選擇付款卡片</div>'}
 <small class="lulu-rewards-foot">刷卡統計依「花費與記帳」連動<br>外幣依查詢當日可取得的參考匯率換算，僅供信用卡額度與花費估算<br>實際台幣請款金額、海外交易手續費及回饋計算，仍以發卡銀行出帳與公告為準</small></div>`}
 function rewardOpenPicker(){ui.rewardPickerOpen=true;render()}
 function rewardClosePicker(){ui.rewardPickerOpen=false;render()}
+function rewardPickerSpendSummary(c){
+  // Long merchant lists remain available in the expanded conditions section.
+  const longMerchantList=/指定通路[：:]|日本實體消費\s*\n|成田機場指定免稅店|IP專賣店/.test(String(c.spendType||'')) || String(c.spendType||'').length>105;
+  return longMerchantList?'指定通路消費（詳見下方回饋條件）':String(c.spendType||'');
+}
+function rewardRegistrationBadge(c){
+  const raw=String(c.registration||'').trim();
+  if(!raw)return '<span class="lulu-rewards-reg-badge no-reg">✓ 不需登錄</span>';
+  const limit=/限[0-9０-９一二三四五六七八九十百千萬]+名|[0-9０-９,，]+名|額滿|限量|名額/.test(raw)&& !/不限(額|量|名額|人數)/.test(raw);
+  return `<div class="lulu-rewards-reg-info"><span class="lulu-rewards-reg-badge need-reg">⚠ 需登錄</span>${limit?'<span class="lulu-rewards-reg-badge limited">名額有限</span>':''}<small>${rewardEscape(raw)}</small></div>`;
+}
+function rewardPickerRegistration(c,st){
+  if(!String(c.registration||'').trim())return '';
+  return `<label class="lulu-rewards-picker-register"><input type="checkbox" ${st.registered[c.id]?'checked':''} onchange="rewardRegistered('${c.id}',this.checked)"><span>已完成銀行活動登錄</span></label>`;
+}
 function rewardPickerModal(){
  const t=rewardTrip();if(!t)return '';
  const st=rewardStore(t);
- return `<div class="lulu-rewards-modal-overlay" onclick="rewardClosePicker()" role="presentation"><section class="lulu-rewards-modal" role="dialog" aria-modal="true" aria-label="精選信用卡方案" onclick="event.stopPropagation()"><div class="lulu-rewards-modal-head"><div><h2>精選信用卡方案</h2><p>挑選這趟旅行會使用的信用卡，加入後就能在記帳時選擇</p></div><button type="button" onclick="rewardClosePicker()">關閉 ✕</button></div><div class="lulu-rewards-modal-list">${[...LULU_REWARD_CATALOG].sort((a,b)=>Number(b.pct||0)-Number(a.pct||0)).map(c=>`<article class="lulu-rewards-modal-card"><div class="lulu-rewards-modal-tag">${rewardEscape(c.region)}</div><h3>${rewardEscape(c.name)} <span>｜ ${rewardEscape(c.pct)}%</span></h3><div class="lulu-rewards-modal-meta">${c.cap?'回饋上限消費 NT$'+Number(c.cap).toLocaleString()+'｜':''}${rewardEscape(c.spendType)}<br>活動期限：${rewardEscape(c.start||'')} ～ ${rewardEscape(c.valid||'依銀行公告')}</div><button type="button" class="lulu-rewards-modal-add ${st.selected.includes(c.id)?'is-added':''}" onclick="rewardChoose('${c.id}',${!st.selected.includes(c.id)})">${st.selected.includes(c.id)?'✓ 已加入這趟旅行（點此移除）':'＋ 加入這趟旅行'}</button>${rewardDetails(c)}</article>`).join('')}</div></section></div>`;
+ return `<div class="lulu-rewards-modal-overlay" onclick="rewardClosePicker()" role="presentation"><section class="lulu-rewards-modal" role="dialog" aria-modal="true" aria-label="精選信用卡方案" onclick="event.stopPropagation()"><div class="lulu-rewards-modal-head"><div><h2>精選信用卡方案</h2><p>挑選這趟旅行會使用的信用卡，加入後就能在記帳時選擇</p></div><button type="button" onclick="rewardClosePicker()">關閉 ✕</button></div><div class="lulu-rewards-modal-list">${[...LULU_REWARD_CATALOG].sort((a,b)=>Number(b.pct||0)-Number(a.pct||0)).map(c=>`<article class="lulu-rewards-modal-card"><div class="lulu-rewards-modal-tag">${rewardEscape(c.region)}</div><h3>${rewardEscape(c.name)} <span>｜ ${rewardEscape(c.pct)}%</span></h3><div class="lulu-rewards-modal-meta">${c.cap?'回饋上限消費 NT$'+Number(c.cap).toLocaleString()+'｜':''}${rewardEscape(rewardPickerSpendSummary(c))}<br>活動期限：${rewardEscape(c.start||'')} ～ ${rewardEscape(c.valid||'依銀行公告')}</div>${rewardRegistrationBadge(c)}${rewardPickerRegistration(c,st)}<button type="button" class="lulu-rewards-modal-add ${st.selected.includes(c.id)?'is-added':''}" onclick="rewardChoose('${c.id}',${!st.selected.includes(c.id)})">${st.selected.includes(c.id)?'✓ 已加入這趟旅行（點此移除）':'＋ 加入這趟旅行'}</button>${rewardDetails(c)}</article>`).join('')}</div></section></div>`;
 }
 function rewardPaymentChoices(t,current){let cards=rewardOptions(t);return cards.map(c=>`<option value="${rewardEscape(c.name)}" ${current===c.name?'selected':''}>💳 ${rewardEscape(c.name)}</option>`).join('')}
 
