@@ -1306,7 +1306,36 @@ input,textarea,select{font-family:inherit;}
 .subgroup-actions{display:flex;align-items:center;gap:4px;flex-shrink:0}
 .subgroup-actions .subgroup-delete{flex-shrink:0;white-space:nowrap;font-size:15px;padding:5px 7px}
 </style>
-<style id="lulu-rewards-addon">.lulu-rewards{background:#fffaf0;border:1px solid #dec784;border-radius:14px;padding:13px;margin:12px 0;color:#243b47;font-size:12px}.lulu-rewards-title{font-weight:800;font-size:16px;display:flex;justify-content:space-between;margin-bottom:10px}.lulu-rewards-picker{background:white;border:1px solid #ddd0a7;border-radius:10px;padding:10px;margin-bottom:12px}.lulu-rewards-picker summary,.lulu-rewards-card summary{cursor:pointer;color:#2f756d;font-weight:700}.lulu-rewards-catalog{max-height:260px;overflow:auto;display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:5px;margin-top:9px}.lulu-rewards-catalog label{display:flex;gap:7px;align-items:center;padding:6px;border-bottom:1px solid #eee4cc}.lulu-rewards-catalog input,.lulu-rewards-register input{width:auto;flex:none}.lulu-rewards-catalog small{display:block;color:#71808b}.lulu-rewards-card{background:#fff;border:1px solid #e5dac1;border-radius:11px;padding:12px;margin:9px 0}.lulu-rewards-card-head{display:flex;align-items:center;justify-content:space-between;gap:6px}.lulu-rewards-card-head button{font-size:11px;color:#9a493b;background:#fff0ed;border:0;padding:5px 9px;border-radius:8px;cursor:pointer}.lulu-rewards-card small,.lulu-rewards-foot{font-size:11px;line-height:1.6;color:#697987}.lulu-rewards-stats{margin:9px 0;line-height:2}.lulu-rewards-stats input{width:100px;max-width:28%;padding:5px;border:1px solid #ddd0a7;border-radius:6px}.lulu-rewards-bar{height:8px;border-radius:20px;background:#ede4ce;overflow:hidden;margin:8px 0}.lulu-rewards-bar i{display:block;background:#2f756d;height:100%}.lulu-rewards-register{display:flex;align-items:center;gap:6px;margin:10px 0}.lulu-rewards-details{white-space:normal;line-height:1.7;padding:8px 0}.lulu-rewards-details p{margin:3px 0 10px}.lulu-rewards-details a{color:#2f756d}.lulu-rewards-rates{padding:9px;background:#f4eddc;border-radius:9px;margin-bottom:10px}.lulu-rewards-rates label{display:inline-flex;align-items:center;gap:4px;margin:6px}.lulu-rewards-rates input{width:85px;padding:5px}.lulu-rewards-empty{padding:13px;text-align:center;color:#7a827f}.lulu-rewards-foot{display:block;margin-top:10px}.lulu-reward-payment-select{padding:8px;border-radius:8px;border:1px solid #d7c9a8;max-width:100%} .lulu-rewards-catalog label{align-items:flex-start}.lulu-rewards-catalog label>span{min-width:0;flex:1}.lulu-rewards-conditions{margin:5px 0 2px;font-size:11px}.lulu-rewards-conditions summary{color:#2f756d;cursor:pointer;font-weight:700}.lulu-rewards-conditions .lulu-rewards-details{overflow-wrap:anywhere}.lulu-rewards-before{display:flex;align-items:center;gap:8px;flex-wrap:nowrap}.lulu-rewards-before input{flex:0 0 105px;max-width:105px}.lulu-rewards-remaining{display:block}.lulu-rewards-rates label{flex-wrap:wrap}.cat-hint-line>div{display:block;line-height:1.65} </style></head>
+<style id="lulu-rewards-addon">.lulu-rewards{background:#fffaf0;border:1px solid #dec784;border-radius:14px;padding:13px;margin:12px 0;color:#243b47;font-size:12px}.lulu-rewards-title{font-weight:800;font-size:16px;display:flex;justify-content:space-between;margin-bottom:10px}.lulu-rewards-picker{background:white;border:1px solid #ddd0a7;border-radius:10px;padding:10px;margin-bottom:12px}.lulu-rewards-picker summary,.lulu-rewards-card summary{cursor:pointer;color:#2f756d;font-weight:700}.lulu-rewards-catalog{max-height:260px;overflow:auto;display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:5px;margin-top:9px}.lulu-rewards-catalog label{display:flex;gap:7px;align-items:center;padding:6px;border-bottom:1px solid #eee4cc}.lulu-rewards-catalog input,.lulu-rewards-register input{width:auto;flex:none}.lulu-rewards-catalog small{display:block;color:#71808b}.lulu-rewards-card{background:#fff;border:1px solid #e5dac1;border-radius:11px;padding:12px;margin:9px 0}.lulu-rewards-card-head{display:flex;align-items:center;justify-content:space-between;gap:6px}.lulu-rewards-card-head button{font-size:11px;color:#9a493b;background:#fff0ed;border:0;padding:5px 9px;border-radius:8px;cursor:pointer}.lulu-rewards-card small,.lulu-rewards-foot{font-size:11px;line-height:1.6;color:#697987}.lulu-rewards-stats{margin:9px 0;line-height:2}.lulu-rewards-stats input{width:100px;max-width:28%;padding:5px;border:1px solid #ddd0a7;border-radius:6px}.lulu-rewards-bar{height:8px;border-radius:20px;background:#ede4ce;overflow:hidden;margin:8px 0}.lulu-rewards-bar i{display:block;background:#2f756d;height:100%}.lulu-rewards-register{display:flex;align-items:center;gap:6px;margin:10px 0}.lulu-rewards-details{white-space:normal;line-height:1.7;padding:8px 0}.lulu-rewards-details p{margin:3px 0 10px}.lulu-rewards-details a{color:#2f756d}.lulu-rewards-rates{padding:9px;background:#f4eddc;border-radius:9px;margin-bottom:10px}.lulu-rewards-rates label{display:inline-flex;align-items:center;gap:4px;margin:6px}.lulu-rewards-rates input{width:85px;padding:5px}.lulu-rewards-empty{padding:13px;text-align:center;color:#7a827f}.lulu-rewards-foot{display:block;margin-top:10px}.lulu-reward-payment-select{padding:8px;border-radius:8px;border:1px solid #d7c9a8;max-width:100%} .lulu-rewards-catalog label{align-items:flex-start}.lulu-rewards-catalog label>span{min-width:0;flex:1}.lulu-rewards-conditions{margin:5px 0 2px;font-size:11px}.lulu-rewards-conditions summary{color:#2f756d;cursor:pointer;font-weight:700}.lulu-rewards-conditions .lulu-rewards-details{overflow-wrap:anywhere}.lulu-rewards-before{display:flex;align-items:center;gap:8px;flex-wrap:nowrap}.lulu-rewards-before input{flex:0 0 105px;max-width:105px}.lulu-rewards-remaining{display:block}.lulu-rewards-rates label{flex-wrap:wrap}.cat-hint-line>div{display:block;line-height:1.65}  .lulu-rewards-empty{line-height:1.9}.lulu-rewards-foot{line-height:1.95!important;font-size:12px!important}.lulu-rewards-rates-note{font-size:12px;line-height:1.85;margin:5px 0 8px;color:#586b6b}.lulu-rewards-details{background:#f8f3e8;border:1px solid #eee2c9;border-radius:10px;padding:12px 14px!important;margin-top:9px;line-height:1.85}.lulu-rewards-details b{color:#53674f}.lulu-rewards-details p{margin:4px 0 12px}.lulu-rewards-details a{display:inline-block;margin-top:4px}.lulu-rewards-rates label{background:#fffdf8;border-radius:7px;padding:3px 6px} 
+/* Lulu credit rewards: standalone large picker and consistent round FX controls */
+.lulu-rewards-open{width:100%;display:flex;justify-content:space-between;align-items:center;gap:12px;text-align:left;background:#fffdf8;border:1px solid #dfc996;color:#286e68;border-radius:13px;padding:14px 16px;font-size:14px;font-weight:750;cursor:pointer;line-height:1.5}
+.lulu-rewards-open span{font-size:12px;white-space:nowrap;color:#6c807c}
+/* Keep the picker CTA readable in narrow card columns */
+.lulu-rewards-open{flex-direction:column;align-items:stretch;gap:5px;padding:12px 14px}
+.lulu-rewards-open .lulu-rewards-open-label{font-size:12px;font-weight:750;white-space:normal;color:#286e68;line-height:1.6}
+.lulu-rewards-open .lulu-rewards-open-link{font-size:12px;align-self:flex-end;white-space:nowrap;color:#6c807c;line-height:1.4}
+
+.lulu-rewards-rates label{display:flex;align-items:center;gap:7px;flex-wrap:wrap;background:#fffdf8;border:1px solid #e5d9bc;border-radius:14px;padding:11px 13px;margin:9px 0;line-height:1.5}
+.lulu-rewards-rates input[type=number]{width:118px;max-width:100%;min-height:40px;box-sizing:border-box;border:1px solid #d8c69f!important;border-radius:12px!important;background:#fff!important;color:#233b49!important;padding:8px 10px!important;font:inherit!important;outline-offset:2px}
+.lulu-rewards-rates label small{display:block;flex:1 1 100%;font-size:11px;line-height:1.6;color:#687b80}
+.lulu-rewards-modal-overlay{position:fixed;inset:0;z-index:10000;background:rgba(35,38,33,.58);display:flex;align-items:center;justify-content:center;padding:clamp(8px,3vw,26px);box-sizing:border-box}
+.lulu-rewards-modal{width:min(950px,100%);max-height:min(90vh,920px);display:flex;flex-direction:column;overflow:hidden;background:#fffaf0;border-radius:24px;border:1px solid #e1d0a8;box-shadow:0 18px 60px #192a2a55;color:#24384e}
+.lulu-rewards-modal-head{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;padding:24px 26px 15px;border-bottom:1px solid #eee1c5}
+.lulu-rewards-modal-head h2{font-size:24px;line-height:1.3;margin:0 0 8px;color:#1e334e}
+.lulu-rewards-modal-head p{font-size:13px;line-height:1.6;color:#72808a;margin:0}
+.lulu-rewards-modal-head button{background:#fff;border:1px solid #dccba7;border-radius:12px;padding:10px 15px;white-space:nowrap;cursor:pointer;color:#24384e}
+.lulu-rewards-modal-list{overflow:auto;overscroll-behavior:contain;padding:18px 26px 28px;display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,350px),1fr));gap:15px}
+.lulu-rewards-modal-card{background:#fff;border:1px solid #e0ce9f;border-radius:18px;padding:20px;min-width:0}
+.lulu-rewards-modal-tag{display:inline-block;background:#e9f2ec;color:#55776c;border-radius:18px;padding:4px 10px;font-size:12px}
+.lulu-rewards-modal-card h3{font-size:19px;line-height:1.5;margin:17px 0 13px;color:#1d3550;overflow-wrap:anywhere}
+.lulu-rewards-modal-card h3 span{white-space:nowrap}
+.lulu-rewards-modal-meta{font-size:12px;line-height:1.8;color:#6e7986;margin-bottom:15px}
+.lulu-rewards-modal-add{background:#2f756d;border:0;border-radius:11px;color:white;font-size:14px;font-weight:700;padding:12px 17px;cursor:pointer;max-width:100%}
+.lulu-rewards-modal-add.is-added{background:#edf4f0;color:#28665f;border:1px solid #aac8bb}
+.lulu-rewards-modal-card .lulu-rewards-conditions{margin-top:16px;font-size:13px}
+.lulu-rewards-modal-card .lulu-rewards-details{font-size:12px}
+@media(max-width:600px){.lulu-rewards-modal-overlay{padding:0;align-items:flex-end}.lulu-rewards-modal{width:100%;height:94dvh;max-height:94dvh;border-radius:24px 24px 0 0}.lulu-rewards-modal-head{padding:21px 18px 14px}.lulu-rewards-modal-head h2{font-size:21px}.lulu-rewards-modal-list{grid-template-columns:1fr;padding:14px 16px 26px}.lulu-rewards-modal-card{padding:17px}.lulu-rewards-modal-head button{padding:9px 11px}}
+</style></head>
 <body>
 <div id="app"></div>
 
@@ -2855,7 +2884,7 @@ function addItem(catId, itemData = {}){
     link: itemData.link || draft.link || '',
     day: itemData.day || draft.day || '',
     amount: itemData.amount !== undefined ? itemData.amount : (draft.amount || ''),
-    currency: itemData.currency !== undefined ? itemData.currency : (draft.currency || ''),
+    currency: catId==='expenses' ? rewardCurrency(itemData.currency !== undefined ? itemData.currency : (draft.currency || '')) : (itemData.currency !== undefined ? itemData.currency : (draft.currency || '')),
     date: itemData.date || draft.date || '',
     category: itemData.category || draft.category || '吃',
     payment: itemData.payment || draft.payment || '現金',
@@ -3037,7 +3066,7 @@ function updateItem(catId, itemId, key, val){
   if(!trip) return;
   const item = trip.categories[catId].items.find(i=>i.id===itemId);
   if(item){
-    item[key] = val;
+    item[key] = (catId==='expenses' && key==='currency') ? rewardCurrency(val) : val;
     if(catId === 'expenses' && key === 'date'){
       sortExpenseItemsByDate(trip);
     }
@@ -3669,32 +3698,98 @@ function rewardChoose(id,checked){let t=rewardTrip();if(!t)return;let st=rewardS
 function rewardRegistered(id,val){let t=rewardTrip();if(!t)return;rewardStore(t).registered[id]=val;scheduleSave();render()}
 function rewardBefore(id,val){let t=rewardTrip();if(!t)return;rewardStore(t).before[id]=Math.max(0,Number(val)||0);scheduleSave();render()}
 function rewardRate(cur,val){let t=rewardTrip();if(!t)return;rewardStore(t).rates[cur]=Math.max(0,Number(val)||0);scheduleSave();render()}
-function rewardSpend(t,id){let st=rewardStore(t);return (t.categories.expenses?.items||[]).filter(i=>i.payment===LULU_REWARD_CATALOG.find(c=>c.id===id)?.name).reduce((sum,i)=>{let amount=Number(i.amount)||0;let cur=(i.currency||'NTD').toUpperCase();return sum+(cur==='NTD'||cur==='TWD'?amount:amount*rewardFxRate(st,cur))},0)}
+function rewardCurrency(raw){
+  const original=String(raw??'').trim();
+  const key=original.toUpperCase().replace(/\s/g,'');
+  const aliases={
+    '日幣':'JPY','日圓':'JPY','日元':'JPY','円':'JPY','YEN':'JPY','￥':'JPY','¥':'JPY',
+    '美元':'USD','美金':'USD','US$':'USD','$USD':'USD',
+    '台幣':'TWD','臺幣':'TWD','新台幣':'TWD','新臺幣':'TWD','NTD':'TWD','NT$':'TWD',
+    '韓元':'KRW','韓幣':'KRW','韓圜':'KRW','WON':'KRW',
+    '歐元':'EUR','EURO':'EUR','€':'EUR',
+    '泰銖':'THB','泰幣':'THB','BAHT':'THB',
+    '新幣':'SGD','新加坡幣':'SGD','星幣':'SGD',
+    '港幣':'HKD','港元':'HKD','英鎊':'GBP','人民幣':'CNY','澳幣':'AUD','加幣':'CAD'
+  };
+  return aliases[key]||key||'TWD';
+}
+function rewardTripCurrencies(t){
+  const items=t.categories.expenses?.items||[];
+  const used=[...new Set(items.map(i=>rewardCurrency(i.currency)).filter(x=>x!=='TWD'))];
+  if(used.length)return used;
+  const dest=String(t.destination||'');
+  const locations=[
+    [/日本|東京|大阪|京都|北海道|沖繩|九州|福岡|名古屋|札幌|熊本|神戶|奈良|新宿|關西/,'JPY'],
+    [/韓國|首爾|釜山|濟州/,'KRW'],
+    [/泰國|曼谷|清邁|普吉|芭達雅/,'THB'],
+    [/新加坡/,'SGD'],[/香港/,'HKD'],
+    [/美國|紐約|洛杉磯|舊金山|夏威夷/,'USD'],
+    [/英國|倫敦/,'GBP'],
+    [/歐洲|法國|巴黎|德國|義大利|西班牙|荷蘭|奧地利|比利時|芬蘭/,'EUR']
+  ];
+  return [...new Set(locations.filter(([pattern])=>pattern.test(dest)).map(([,code])=>code))];
+}
+function rewardSpend(t,id){let st=rewardStore(t);return (t.categories.expenses?.items||[]).filter(i=>i.payment===LULU_REWARD_CATALOG.find(c=>c.id===id)?.name).reduce((sum,i)=>{let amount=Number(i.amount)||0;let cur=rewardCurrency(i.currency);return sum+(cur==='NTD'||cur==='TWD'?amount:amount*rewardFxRate(st,cur))},0)}
 function rewardDetails(c){return `<details class="lulu-rewards-conditions"><summary>查看回饋條件與 Lulu 備註</summary><div class="lulu-rewards-details"><b>消費類型</b><p>${rewardText(c.spendType)}</p><b>回饋組成</b><p>${rewardText(c.composition)}</p><b>必備條件</b><p>${rewardText(c.need)}</p><b>登錄要求</b><p>${rewardText(c.registration||'不需登錄')}</p><b>Lulu 備註</b><p>${rewardText(c.luluNote)}</p><a href="${rewardEscape(c.source)}" target="_blank" rel="noopener noreferrer">↗ 銀行官方資訊</a></div></details>`}
-const LULU_FX_ENDPOINT='https://api.frankfurter.dev/v1/latest';
+const LULU_FX_ENDPOINT='https://api.frankfurter.dev/v2/rate';
 const luluFxPending=new Set();
+const luluFxRetryAfter=new Map();
 function rewardFxRate(st,cur){const manual=Number(st.rates?.[cur]);if(manual>0)return manual;return Number(st.autoRates?.[cur]?.rate)||0}
 function rewardFxFetch(t,currencies){
   if(!navigator.onLine)return;
   const st=rewardStore(t);st.autoRates=st.autoRates||{};
   const today=new Date().toLocaleDateString('en-CA');
   currencies.forEach(cur=>{
-    if(st.autoRates[cur]?.checked===today||luluFxPending.has(cur))return;
-    luluFxPending.add(cur);
-    fetch(`${LULU_FX_ENDPOINT}?base=${encodeURIComponent(cur)}&symbols=TWD`,{cache:'no-store'})
-      .then(r=>{if(!r.ok)throw Error('FX unavailable');return r.json()})
-      .then(data=>{let rate=Number(data?.rates?.TWD);if(!(rate>0))throw Error('No rate');const trip=rewardTrip();if(!trip||trip.id!==t.id)return;let target=rewardStore(trip);target.autoRates=target.autoRates||{};target.autoRates[cur]={rate,date:data.date||'',checked:today};scheduleSave();render()})
-      .catch(()=>{const trip=rewardTrip();if(!trip||trip.id!==t.id)return;let target=rewardStore(trip);target.autoRates=target.autoRates||{};target.autoRates[cur]=target.autoRates[cur]||{rate:0,date:'',checked:today};target.autoRates[cur].checked=today;render()})
-      .finally(()=>luluFxPending.delete(cur));
+    if(!/^[A-Z]{3}$/.test(cur)||cur==='TWD')return;
+    const key=String(t.id)+'|'+cur;
+    if(st.autoRates[cur]?.checked===today&&Number(st.autoRates[cur]?.rate)>0)return;
+    if(luluFxPending.has(key)||Date.now()<(luluFxRetryAfter.get(key)||0))return;
+    luluFxPending.add(key);
+    fetch(`${LULU_FX_ENDPOINT}/${encodeURIComponent(cur)}/TWD`,{cache:'no-store'})
+      .then(r=>{if(!r.ok)throw Error('FX HTTP '+r.status);return r.json()})
+      .then(data=>{
+        const rate=Number(data?.rate);
+        if(!(rate>0)||String(data?.quote||'').toUpperCase()!=='TWD')throw Error('Invalid FX response');
+        const trip=rewardTrip();if(!trip||trip.id!==t.id)return;
+        const target=rewardStore(trip);target.autoRates=target.autoRates||{};
+        target.autoRates[cur]={rate,date:data.date||'',checked:today};
+        luluFxRetryAfter.delete(key);
+        scheduleSave();render();
+      })
+      .catch(err=>{
+        console.warn('Luluplore FX lookup failed:',cur,err);
+        luluFxRetryAfter.set(key,Date.now()+5*60*1000);
+        const trip=rewardTrip();if(!trip||trip.id!==t.id)return;
+        const target=rewardStore(trip);target.autoRates=target.autoRates||{};
+        if(!Number(target.autoRates[cur]?.rate))target.autoRates[cur]={rate:0,date:'',checked:''};
+        render();
+      })
+      .finally(()=>luluFxPending.delete(key));
   });
 }
+function rewardFxStatus(st,cur,t){
+  const entry=st.autoRates?.[cur];
+  if(Number(entry?.rate)>0)return `參考 ${Number(entry.rate).toFixed(4)}（${rewardEscape(entry.date||'最新可取得日期')}）`;
+  if(!navigator.onLine)return '目前離線，可手動輸入匯率';
+  const key=String(t.id)+'|'+cur;
+  if(luluFxPending.has(key))return '自動參考匯率載入中…';
+  if(Date.now()<(luluFxRetryAfter.get(key)||0))return '查詢暫時失敗，稍後會自動重試，也可手動輸入';
+  return '正在查詢參考匯率…';
+}
 function rewardText(v){return rewardEscape(v).replace(/⚠(?!️)/g,'⚠️').replace(/([。！!；;])\s*/g,'$1<br>').replace(/\n/g,'<br>')}
-function renderRewardHub(t){let st=rewardStore(t);let selected=rewardOptions(t);let allExpenses=t.categories.expenses?.items||[];let currencies=[...new Set(allExpenses.map(i=>(i.currency||'NTD').toUpperCase()).filter(x=>x!=='NTD'&&x!=='TWD'))];rewardFxFetch(t,currencies);return `<div class="lulu-rewards">
+function renderRewardHub(t){let st=rewardStore(t);let selected=rewardOptions(t);let allExpenses=t.categories.expenses?.items||[];let currencies=selected.length?rewardTripCurrencies(t):[];rewardFxFetch(t,currencies);return `<div class="lulu-rewards">
 <div class="lulu-rewards-title">💳 我的旅行信用卡 <span>${selected.length} 張</span></div>
-<details class="lulu-rewards-picker"><summary>＋ 從 Lulu 精選 30 個信用卡方案加入</summary><div class="lulu-rewards-catalog">${LULU_REWARD_CATALOG.map(c=>`<label><input type="checkbox" ${st.selected.includes(c.id)?'checked':''} onchange="rewardChoose('${c.id}',this.checked)"><span><b>${rewardEscape(c.name)}</b> <small>${c.pct}%｜${rewardEscape(c.region)}</small>${rewardDetails(c)}</span></label>`).join('')}</div></details>
-${currencies.length?`<div class="lulu-rewards-rates"><b>外幣換算（僅用於信用卡額度統計，留空即使用自動參考匯率）</b>${currencies.map(cur=>`<label>1 ${rewardEscape(cur)} = <input type="number" min="0" step="0.0001" placeholder="填入台幣匯率" value="${st.rates[cur]||''}" onchange="rewardRate('${rewardEscape(cur)}',this.value)"> TWD <small>${st.autoRates?.[cur]?.rate?`參考 ${Number(st.autoRates[cur].rate).toFixed(4)}（${rewardEscape(st.autoRates[cur].date)}）`:'參考匯率載入中或暫不可用'}</small></label>`).join('')}</div>`:''}
-${selected.length?selected.map(c=>{let used=rewardSpend(t,c.id),before=Number(st.before[c.id])||0,total=used+before,cap=Number(c.cap)||0,pct=cap?Math.min(100,total/cap*100):0,expired=c.valid&&new Date(c.valid+'T23:59:59')<new Date();return `<div class="lulu-rewards-card"><div class="lulu-rewards-card-head"><strong>${rewardEscape(c.name)}｜${c.pct}%</strong><button onclick="rewardChoose('${c.id}',false)">移除</button></div><small>${rewardEscape(c.region)}｜活動期限 ${rewardEscape(c.valid)} ${expired?'｜⚠️ 已過期':''}</small><div class="lulu-rewards-stats"><div>本趟記帳已刷 <b>NT$${Math.round(used).toLocaleString()}</b></div><div class="lulu-rewards-before">出發前已刷 <input type="number" min="0" placeholder="0" value="${before||''}" onchange="rewardBefore('${c.id}',this.value)"></div></div>${cap?`<div class="lulu-rewards-bar"><i style="width:${pct}%"></i></div><small>已計入 NT$${Math.round(total).toLocaleString()}／額度 NT$${cap.toLocaleString()}</small><small class="lulu-rewards-remaining">剩餘 NT$${Math.max(0,Math.round(cap-total)).toLocaleString()}</small>`:'<small>未設定可刷上限</small>'}${c.registration?`<label class="lulu-rewards-register"><input type="checkbox" ${st.registered[c.id]?'checked':''} onchange="rewardRegistered('${c.id}',this.checked)"> 我已自行完成銀行活動登錄　<small>${rewardEscape(c.registration)}</small></label>`:''}${rewardDetails(c)}</div>`}).join(''):'<div class="lulu-rewards-empty">先加入這趟會使用的信用卡，記帳時就能直接選擇付款卡片</div>'}
-<small class="lulu-rewards-foot">刷卡統計依「花費與記帳」連動，外幣依查詢當日可取得的參考匯率換算，僅供信用卡額度與花費估算，實際台幣請款金額、海外交易手續費及回饋計算，仍以發卡銀行出帳與公告為準</small></div>`}
+<button type="button" class="lulu-rewards-open" onclick="rewardOpenPicker()"><span class="lulu-rewards-open-label">＋ 從 Lulu 精選 30 個信用卡方案加入</span><span class="lulu-rewards-open-link">查看方案 ↗</span></button>
+${currencies.length?`<div class="lulu-rewards-rates"><b>外幣換算</b><div class="lulu-rewards-rates-note">預設自動採用最新參考匯率<br>需要時可自行輸入匯率覆蓋<br>（僅用於信用卡額度統計）</div>${currencies.map(cur=>`<label>1 ${rewardEscape(cur)} = <input type="number" min="0" step="0.0001" placeholder="自動換算" value="${st.rates[cur]||''}" onchange="rewardRate('${rewardEscape(cur)}',this.value)"> TWD <small>${rewardFxStatus(st,cur,t)}</small></label>`).join('')}</div>`:''}
+${selected.length?selected.map(c=>{let used=rewardSpend(t,c.id),before=Number(st.before[c.id])||0,total=used+before,cap=Number(c.cap)||0,pct=cap?Math.min(100,total/cap*100):0,expired=c.valid&&new Date(c.valid+'T23:59:59')<new Date();return `<div class="lulu-rewards-card"><div class="lulu-rewards-card-head"><strong>${rewardEscape(c.name)}｜${c.pct}%</strong><button onclick="rewardChoose('${c.id}',false)">移除</button></div><small>${rewardEscape(c.region)}｜活動期限 ${rewardEscape(c.valid)} ${expired?'｜⚠️ 已過期':''}</small><div class="lulu-rewards-stats"><div>本趟記帳已刷 <b>NT$${Math.round(used).toLocaleString()}</b></div><div class="lulu-rewards-before">出發前已刷 <input type="number" min="0" placeholder="0" value="${before||''}" onchange="rewardBefore('${c.id}',this.value)"></div></div>${cap?`<div class="lulu-rewards-bar"><i style="width:${pct}%"></i></div><small>已計入 NT$${Math.round(total).toLocaleString()}／額度 NT$${cap.toLocaleString()}</small><small class="lulu-rewards-remaining">剩餘 NT$${Math.max(0,Math.round(cap-total)).toLocaleString()}</small>`:'<small>未設定可刷上限</small>'}${c.registration?`<label class="lulu-rewards-register"><input type="checkbox" ${st.registered[c.id]?'checked':''} onchange="rewardRegistered('${c.id}',this.checked)"> 我已自行完成銀行活動登錄　<small>${rewardEscape(c.registration)}</small></label>`:''}${rewardDetails(c)}</div>`}).join(''):'<div class="lulu-rewards-empty">先加入這趟會使用的信用卡<br>記帳時就能直接選擇付款卡片</div>'}
+<small class="lulu-rewards-foot">刷卡統計依「花費與記帳」連動<br>外幣依查詢當日可取得的參考匯率換算，僅供信用卡額度與花費估算<br>實際台幣請款金額、海外交易手續費及回饋計算，仍以發卡銀行出帳與公告為準</small></div>`}
+function rewardOpenPicker(){ui.rewardPickerOpen=true;render()}
+function rewardClosePicker(){ui.rewardPickerOpen=false;render()}
+function rewardPickerModal(){
+ const t=rewardTrip();if(!t)return '';
+ const st=rewardStore(t);
+ return `<div class="lulu-rewards-modal-overlay" onclick="rewardClosePicker()" role="presentation"><section class="lulu-rewards-modal" role="dialog" aria-modal="true" aria-label="精選信用卡方案" onclick="event.stopPropagation()"><div class="lulu-rewards-modal-head"><div><h2>精選信用卡方案</h2><p>挑選這趟旅行會使用的信用卡，加入後就能在記帳時選擇</p></div><button type="button" onclick="rewardClosePicker()">關閉 ✕</button></div><div class="lulu-rewards-modal-list">${[...LULU_REWARD_CATALOG].sort((a,b)=>Number(b.pct||0)-Number(a.pct||0)).map(c=>`<article class="lulu-rewards-modal-card"><div class="lulu-rewards-modal-tag">${rewardEscape(c.region)}</div><h3>${rewardEscape(c.name)} <span>｜ ${rewardEscape(c.pct)}%</span></h3><div class="lulu-rewards-modal-meta">${c.cap?'回饋上限消費 NT$'+Number(c.cap).toLocaleString()+'｜':''}${rewardEscape(c.spendType)}<br>活動期限：${rewardEscape(c.start||'')} ～ ${rewardEscape(c.valid||'依銀行公告')}</div><button type="button" class="lulu-rewards-modal-add ${st.selected.includes(c.id)?'is-added':''}" onclick="rewardChoose('${c.id}',${!st.selected.includes(c.id)})">${st.selected.includes(c.id)?'✓ 已加入這趟旅行（點此移除）':'＋ 加入這趟旅行'}</button>${rewardDetails(c)}</article>`).join('')}</div></section></div>`;
+}
 function rewardPaymentChoices(t,current){let cards=rewardOptions(t);return cards.map(c=>`<option value="${rewardEscape(c.name)}" ${current===c.name?'selected':''}>💳 ${rewardEscape(c.name)}</option>`).join('')}
 
 function renderCategoryCard(trip, cat){
@@ -4390,6 +4485,7 @@ function openTrip(id){
 
 function renderModals(){
   let html = '';
+  if(ui.rewardPickerOpen)html += rewardPickerModal();
 
   // 固定在畫面上的同步狀態提示：不管捲動到哪裡都看得到，
   // 只有在真的「同步中」才會出現，同步完成後會自動消失，
