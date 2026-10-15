@@ -1427,6 +1427,20 @@ input,textarea,select{font-family:inherit;}
 .expense-currency-quick-select{max-width:100%;min-height:33px;border:1px solid #dacaa8;border-radius:9px;background:#fffdf8;color:#35534e;font-size:12px;padding:4px 6px}
 @media(max-width:420px){.lulu-rewards-tutorial-steps{gap:5px}.lulu-rewards-tutorial-steps>div{padding:8px 4px}.lulu-rewards-tutorial-steps small{font-size:10px}}
 </style>
+
+<style id="lulu-rewards-v9-mobile-polish">
+/* One-line CTA with balanced typography on mobile */
+.lulu-rewards-open{flex-direction:row!important;align-items:center!important;justify-content:space-between!important;gap:8px!important;padding:11px 12px!important}
+.lulu-rewards-open .lulu-rewards-open-label{font-size:13px!important;font-weight:750!important;line-height:1.4!important;flex:1 1 auto!important;min-width:0!important}
+.lulu-rewards-open .lulu-rewards-open-link{font-size:11px!important;flex:0 0 auto!important;white-space:nowrap!important;align-self:center!important}
+.lulu-rewards-remaining{color:#267267!important;font-weight:800!important;font-size:12px!important;margin-top:3px}
+/* Native date picker remains tappable; visual date is localized and left aligned */
+.expense-add-grid .expense-date-picker{position:relative;display:flex;align-items:center;width:100%;min-width:0;min-height:44px;box-sizing:border-box;border:1px solid #d8cbaa;border-radius:12px;background:#fffefa;overflow:hidden;padding:10px 12px;cursor:pointer}
+.expense-add-grid .expense-date-display{display:block;min-width:0;color:#b1a487;font-size:14px;line-height:1.5;text-align:left;pointer-events:none}
+.expense-add-grid .expense-date-display.has-value{color:#24384e}
+.expense-add-grid .expense-date-picker input[type=date]{position:absolute!important;inset:0!important;width:100%!important;height:100%!important;min-height:0!important;opacity:0!important;cursor:pointer!important;z-index:1;margin:0!important;padding:0!important;border:0!important}
+@media(max-width:420px){.lulu-rewards-open .lulu-rewards-open-label{font-size:12px!important}.lulu-rewards-open .lulu-rewards-open-link{font-size:10px!important}}
+</style>
 </head>
 <body>
 <div id="app"></div>
@@ -2626,7 +2640,7 @@ function rememberedExpenseCurrencies(){
   try{const data=JSON.parse(localStorage.getItem('luluplore-expense-currency-history-v1')||'[]');return Array.isArray(data)?data:[]}catch(e){return []}
 }
 function expenseCurrencySelect(value,trip){
-  const choices=[...new Set(['TWD','JPY','USD','EUR','KRW','THB','SGD','HKD',...currencySuggestions(trip)])];
+  const choices=[...new Set(['NTD','JPY','USD','EUR','KRW','THB','SGD','HKD',...currencySuggestions(trip)].filter(c=>c!=='TWD'))];
   return `<select class="expense-currency-quick-select" aria-label="選擇曾用幣別" onchange="if(this.value){const field=this.parentElement.querySelector('input[list=currency-list]');field.value=this.value;field.dispatchEvent(new Event('input',{bubbles:true}));}"><option value="">選擇幣別 ▾</option>${choices.map(c=>`<option value="${escapeAttr(c)}" ${c===value?'selected':''}>${escapeHtml(c)}</option>`).join('')}</select>`;
 }
 function currencySuggestions(trip){
@@ -2799,7 +2813,7 @@ function renderExpenseAddSheet(trip){
         <textarea class="wide" placeholder="品項名稱" rows="2" oninput="setDraftProp('expenses','text',this.value)">${escapeHtml(d.text||'')}</textarea>
         <input type="number" placeholder="金額" value="${escapeAttr(d.amount||'')}" oninput="setDraftProp('expenses','amount',this.value)">
         <div class="expense-currency-picker"><input type="text" list="currency-list" placeholder="幣別" value="${escapeAttr(d.currency||'')}" oninput="setDraftProp('expenses','currency',this.value)">${expenseCurrencySelect(d.currency||'',trip)}<small>輸入過的幣別會自動記憶</small></div>
-        <input type="date" value="${escapeAttr(d.date||'')}" onchange="setDraftProp('expenses','date',this.value)">
+        <label class="expense-date-picker"><span class="expense-date-display ${d.date?'has-value':''}">${d.date?escapeHtml(d.date.replace(/-/g,'/')):'日期'}</span><input type="date" aria-label="日期" lang="zh-TW" value="${escapeAttr(d.date||'')}" onchange="setDraftProp('expenses','date',this.value);const label=this.parentElement.querySelector('.expense-date-display');label.textContent=this.value?this.value.replace(/-/g,'/'):'日期';label.classList.toggle('has-value',!!this.value)"></label>
         <input type="text" list="expense-cat-list" placeholder="類別" value="${escapeAttr(d.category||'')}" oninput="setDraftProp('expenses','category',this.value)">
         ${rewardOptions(trip).length?`<select class="wide lulu-reward-payment-select" onchange="setDraftProp('expenses','payment',this.value)"><option value="">選擇旅行信用卡（或在下方自行輸入）</option>${rewardPaymentChoices(trip,d.payment||'')}</select>`:''}
         <input class="wide" type="text" list="payment-list" placeholder="付款方式" value="${escapeAttr(d.payment||'')}" oninput="setDraftProp('expenses','payment',this.value)">
@@ -3908,7 +3922,7 @@ function renderRewardHub(t){let st=rewardStore(t);let selected=rewardOptions(t);
 <button type="button" class="lulu-rewards-open" onclick="rewardOpenPicker()"><span class="lulu-rewards-open-label">+ 從 Lulu 精選 30 個信用卡方案加入</span><span class="lulu-rewards-open-link">查看方案 ↗</span></button>
 <details class="lulu-rewards-tutorial"><summary>💡 信用卡回饋怎麼自動統計？</summary><div class="lulu-rewards-tutorial-content"><p>只要在「花費與記帳」記錄消費，選擇已加入的信用卡，系統就會自動更新已刷額度與進度條</p><div class="lulu-rewards-tutorial-steps"><div><span>①</span><b>加入信用卡</b><small>挑選這趟旅行會使用的卡片</small></div><div><span>②</span><b>新增花費</b><small>付款方式選擇對應信用卡</small></div><div><span>③</span><b>自動統計</b><small>查看已計入金額、剩餘額度與進度</small></div></div><small>此處統計刷卡額度，實際回饋仍以銀行公告與帳單為準</small></div></details>
 ${currencies.length?`<div class="lulu-rewards-rates"><b>外幣換算</b><div class="lulu-rewards-rates-note">預設採用最新參考匯率（僅用於信用卡額度統計使用）</div>${currencies.map(cur=>`<label>1 ${rewardEscape(cur)} = <input type="number" min="0" step="0.0001" placeholder="查詢中" value="${rewardFxInputValue(st,cur)}" onchange="rewardRate('${rewardEscape(cur)}',this.value)"> TWD <small>${rewardFxStatus(st,cur,t)}</small></label>`).join('')}</div>`:''}
-${selected.length?selected.map(c=>{let used=rewardSpend(t,c.id),before=Number(st.before[c.id])||0,total=used+before,cap=Number(c.cap)||0,pct=cap?Math.min(100,total/cap*100):0,expired=c.valid&&new Date(c.valid+'T23:59:59')<new Date();return `<div class="lulu-rewards-card"><div class="lulu-rewards-card-head"><strong>${rewardEscape(c.name)}｜${c.pct}%</strong><button onclick="rewardChoose('${c.id}',false)">移除</button></div><small>${rewardEscape(c.region)}｜活動到期日 ${rewardEscape(c.valid)} ${expired?'｜⚠️ 已過期':''}</small><div class="lulu-rewards-stats"><div class="lulu-rewards-before">出發前已刷 <input type="number" min="0" placeholder="0" value="${before||''}" onchange="rewardBefore('${c.id}',this.value)"></div></div>${cap?`<div class="lulu-rewards-bar"><i style="width:${pct}%"></i></div><small>已計入 NT$${Math.round(total).toLocaleString()}／額度 NT$${cap.toLocaleString()}</small><small class="lulu-rewards-remaining">剩餘 NT$${Math.max(0,Math.round(cap-total)).toLocaleString()}</small>`:'<small>未設定可刷上限</small>'}${c.registration?`<label class="lulu-rewards-register"><input class="lulu-rewards-register-input" type="checkbox" ${st.registered[c.id]?'checked':''} onchange="rewardRegistered('${c.id}',this.checked)"><span class="lulu-rewards-register-circle" aria-hidden="true">✓</span><span>已完成銀行活動登錄</span></label>`:''}${rewardDetails(c)}</div>`}).join(''):'<div class="lulu-rewards-empty">先加入這趟會使用的信用卡<br>記帳時就能直接選擇付款卡片</div>'}
+${selected.length?selected.map(c=>{let used=rewardSpend(t,c.id),before=Number(st.before[c.id])||0,total=used+before,cap=Number(c.cap)||0,pct=cap?Math.min(100,total/cap*100):0,expired=c.valid&&new Date(c.valid+'T23:59:59')<new Date();return `<div class="lulu-rewards-card"><div class="lulu-rewards-card-head"><strong>${rewardEscape(c.name)}｜${c.pct}%</strong><button onclick="rewardChoose('${c.id}',false)">移除</button></div><small>${rewardEscape(c.region)}<br>活動到期日 ${rewardEscape(c.valid)} ${expired?'｜⚠️ 已過期':''}</small><div class="lulu-rewards-stats"><div class="lulu-rewards-before">出發前已刷 <input type="number" min="0" placeholder="0" value="${before||''}" onchange="rewardBefore('${c.id}',this.value)"></div></div>${cap?`<div class="lulu-rewards-bar"><i style="width:${pct}%"></i></div><small>已計入 NT$${Math.round(total).toLocaleString()}／額度 NT$${cap.toLocaleString()}</small><small class="lulu-rewards-remaining">剩餘 NT$${Math.max(0,Math.round(cap-total)).toLocaleString()}</small>`:'<small>未設定可刷上限</small>'}${c.registration?`<label class="lulu-rewards-register"><input class="lulu-rewards-register-input" type="checkbox" ${st.registered[c.id]?'checked':''} onchange="rewardRegistered('${c.id}',this.checked)"><span class="lulu-rewards-register-circle" aria-hidden="true">✓</span><span>已完成銀行活動登錄</span></label>`:''}${rewardDetails(c)}</div>`}).join(''):'<div class="lulu-rewards-empty">先加入這趟會使用的信用卡<br>記帳時就能直接選擇付款卡片</div>'}
 <small class="lulu-rewards-foot">💡 刷卡統計資料依「花費與記帳」連動<br>⚠️ 實際入帳金額、海外交易手續費及回饋計算，仍以發卡銀行出帳與公告為準</small></div>`}
 function rewardOpenPicker(){ui.rewardPickerOpen=true;render()}
 function rewardClosePicker(){ui.rewardPickerOpen=false;render()}
