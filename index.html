@@ -1305,6 +1305,9 @@ input,textarea,select{font-family:inherit;}
 .subgroup-title-input{min-width:0;width:100%;flex:1}
 .subgroup-actions{display:flex;align-items:center;gap:4px;flex-shrink:0}
 .subgroup-actions .subgroup-delete{flex-shrink:0;white-space:nowrap;font-size:15px;padding:5px 7px}
+/* Unlimited-reward cards show actual recorded spending without a misleading limit bar */
+.lulu-rewards-unlimited-spend{margin-top:8px;color:#2E7066;font-size:14px;font-weight:600;line-height:1.6}
+.lulu-rewards-unlimited-spend strong{font-size:14px;font-variant-numeric:tabular-nums}
 </style>
 <style id="lulu-rewards-addon">.lulu-rewards-details p.lulu-rewards-need-text{line-height:1.55!important;margin-top:3px!important;margin-bottom:10px!important}.lulu-rewards{background:#fffaf0;border:1px solid #dec784;border-radius:14px;padding:13px;margin:12px 0;color:#243b47;font-size:12px}.lulu-rewards-title{font-weight:800;font-size:16px;display:flex;justify-content:space-between;margin-bottom:10px}.lulu-rewards-picker{background:white;border:1px solid #ddd0a7;border-radius:10px;padding:10px;margin-bottom:12px}.lulu-rewards-picker summary,.lulu-rewards-card summary{cursor:pointer;color:#2f756d;font-weight:700}.lulu-rewards-catalog{max-height:260px;overflow:auto;display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:5px;margin-top:9px}.lulu-rewards-catalog label{display:flex;gap:7px;align-items:center;padding:6px;border-bottom:1px solid #eee4cc}.lulu-rewards-catalog input,.lulu-rewards-register input{width:auto;flex:none}.lulu-rewards-catalog small{display:block;color:#71808b}.lulu-rewards-card{background:#fff;border:1px solid #e5dac1;border-radius:11px;padding:12px;margin:9px 0}.lulu-rewards-card-head{display:flex;align-items:center;justify-content:space-between;gap:6px}.lulu-rewards-card-head button{font-size:11px;color:#9a493b;background:#fff0ed;border:0;padding:5px 9px;border-radius:8px;cursor:pointer}.lulu-rewards-card small,.lulu-rewards-foot{font-size:11px;line-height:1.6;color:#697987}.lulu-rewards-stats{margin:9px 0;line-height:2}.lulu-rewards-stats input{width:100px;max-width:28%;padding:5px;border:1px solid #ddd0a7;border-radius:6px}.lulu-rewards-bar{height:8px;border-radius:20px;background:#ede4ce;overflow:hidden;margin:8px 0}.lulu-rewards-bar i{display:block;background:#2f756d;height:100%}.lulu-rewards-register{display:flex;align-items:center;gap:6px;margin:10px 0}.lulu-rewards-details{white-space:normal;line-height:1.7;padding:8px 0}.lulu-rewards-details p{margin:3px 0 10px}.lulu-rewards-details a{color:#2f756d}.lulu-rewards-rates{padding:9px;background:#f4eddc;border-radius:9px;margin-bottom:10px}.lulu-rewards-rates label{display:inline-flex;align-items:center;gap:4px;margin:6px}.lulu-rewards-rates input{width:85px;padding:5px}.lulu-rewards-empty{padding:13px;text-align:center;color:#7a827f}.lulu-rewards-foot{display:block;margin-top:10px}.lulu-reward-payment-select{padding:8px;border-radius:8px;border:1px solid #d7c9a8;max-width:100%} .lulu-rewards-catalog label{align-items:flex-start}.lulu-rewards-catalog label>span{min-width:0;flex:1}.lulu-rewards-conditions{margin:5px 0 2px;font-size:11px}.lulu-rewards-conditions summary{color:#2f756d;cursor:pointer;font-weight:700}.lulu-rewards-conditions .lulu-rewards-details{overflow-wrap:anywhere}.lulu-rewards-before{display:flex;align-items:center;gap:8px;flex-wrap:nowrap}.lulu-rewards-before input{flex:0 0 105px;max-width:105px}.lulu-rewards-remaining{display:block}.lulu-rewards-rates label{flex-wrap:wrap}.cat-hint-line>div{display:block;line-height:1.65}  .lulu-rewards-empty{line-height:1.9}.lulu-rewards-foot{line-height:1.95!important;font-size:12px!important}.lulu-rewards-rates-note{font-size:12px;line-height:1.85;margin:5px 0 8px;color:#586b6b}.lulu-rewards-details{background:#f8f3e8;border:1px solid #eee2c9;border-radius:10px;padding:12px 14px!important;margin-top:9px;line-height:1.85}.lulu-rewards-details b{color:#53674f}.lulu-rewards-details p{margin:4px 0 12px}.lulu-rewards-details a{display:inline-block;margin-top:4px}.lulu-rewards-rates label{background:#fffdf8;border-radius:7px;padding:3px 6px} 
 /* Lulu credit rewards: standalone large picker and consistent round FX controls */
@@ -2784,8 +2787,35 @@ function expenseVisibleByToolbar(item){
   if(ui.expensePaymentFilter && (item.payment||'')!==ui.expensePaymentFilter) return false;
   return true;
 }
-function openExpenseAdd(){ui.expenseAddOpen=true;render();}
-function closeExpenseAdd(){ui.expenseAddOpen=false;render();}
+function setExpenseDraftPayment(value,selectEl){
+  const payment=rewardNormalizePayment(value);
+  setDraftProp('expenses','payment',payment);
+  const input=selectEl?.closest('.expense-add-grid')?.querySelector('input[list="payment-list"]');
+  if(input) input.value=payment;
+}
+function updateExpenseCardPayment(itemId,value,selectEl){
+  const payment=rewardNormalizePayment(value);
+  const input=selectEl?.closest('.expense-edit-grid')?.querySelector('input[list="payment-list"]');
+  if(input) input.value=payment;
+  updateItem('expenses',itemId,'payment',payment);
+}
+function expenseRememberScroll(){
+  ui.expenseAddScrollY=window.scrollY;
+  const panel=document.querySelector('.cat-body[data-cat-id="expenses"]');
+  ui.expenseAddPanelScroll=panel?panel.scrollTop:null;
+}
+function expenseRestoreScroll(){
+  const y=ui.expenseAddScrollY;
+  const panelY=ui.expenseAddPanelScroll;
+  const restore=()=>{
+    if(Number.isFinite(y))window.scrollTo({top:y,left:0,behavior:'instant'});
+    const panel=document.querySelector('.cat-body[data-cat-id="expenses"]');
+    if(panel&&Number.isFinite(panelY))panel.scrollTop=panelY;
+  };
+  restore();requestAnimationFrame(restore);
+}
+function openExpenseAdd(){expenseRememberScroll();ui.expenseAddOpen=true;render();}
+function closeExpenseAdd(){ui.expenseAddOpen=false;render();expenseRestoreScroll();}
 function toggleExpenseFilters(){ui.expenseFilterOpen=!ui.expenseFilterOpen;render();}
 function setExpenseCategoryFilter(v){ui.expenseCategoryFilter=v;render();}
 function setExpensePaymentFilter(v){ui.expensePaymentFilter=v;render();}
@@ -2795,6 +2825,7 @@ function addExpenseFromSheet(){
   addItem('expenses');
   ui.expenseAddOpen=false;
   render();
+  expenseRestoreScroll();
 }
 function renderExpenseToolbar(trip){
   const manual=getManualExpenseItems(trip);
@@ -2813,6 +2844,20 @@ function renderExpenseToolbar(trip){
     <button class="expense-tool-btn ${ui.receivableFilter==='received'?'active':''}" onclick="setReceivableFilter(ui.receivableFilter==='received'?'all':'received')">✓ 已收款</button>
   </div>`:''}`;
 }
+function expenseToggleDraftReceivable(checked,el){
+  const form=el?.closest('.expense-add-sheet');
+  if(form){
+    const grid=form.querySelector('.expense-add-grid');
+    const payment=grid?.querySelector('input[list="payment-list"]');
+    if(payment)setDraftProp('expenses','payment',rewardNormalizePayment(payment.value));
+  }
+  setDraftProp('expenses','isReceivable',checked);
+  if(checked&&!ui.newItem.expenses.receivableAmount)ui.newItem.expenses.receivableAmount=ui.newItem.expenses.amount||'';
+  const sheetScroll=form?.scrollTop||0;
+  render();
+  const next=document.querySelector('.expense-add-sheet');
+  if(next)next.scrollTop=sheetScroll;
+}
 function renderExpenseAddSheet(trip){
   if(!ui.expenseAddOpen) return '';
   const d=ui.newItem.expenses||{};
@@ -2825,11 +2870,11 @@ function renderExpenseAddSheet(trip){
         <div class="expense-currency-picker"><input type="text" list="currency-list" placeholder="幣別" value="${escapeAttr(d.currency||'')}" oninput="setDraftProp('expenses','currency',this.value)">${expenseCurrencySelect(d.currency||'',trip)}<small>輸入過的幣別會自動記憶</small></div>
         <label class="expense-date-picker"><span class="expense-date-display ${d.date?'has-value':''}">${d.date?escapeHtml(d.date.replace(/-/g,'/')):'日期'}</span><input type="date" aria-label="日期" lang="zh-TW" value="${escapeAttr(d.date||'')}" onchange="setDraftProp('expenses','date',this.value);const label=this.parentElement.querySelector('.expense-date-display');label.textContent=this.value?this.value.replace(/-/g,'/'):'日期';label.classList.toggle('has-value',!!this.value)"></label>
         <input type="text" list="expense-cat-list" placeholder="類別" value="${escapeAttr(d.category||'')}" oninput="setDraftProp('expenses','category',this.value)">
-        ${rewardOptions(trip).length?`<select class="wide lulu-reward-payment-select" onchange="setDraftProp('expenses','payment',this.value)"><option value="">選擇旅行信用卡（或在下方自行輸入）</option>${rewardPaymentChoices(trip,d.payment||'')}</select>`:''}
-        <input class="wide" type="text" list="payment-list" placeholder="付款方式" value="${escapeAttr(d.payment||'')}" oninput="setDraftProp('expenses','payment',this.value)">
+        ${rewardOptions(trip).length?`<select class="wide lulu-reward-payment-select" onchange="setExpenseDraftPayment(this.value,this)"><option value="">選擇旅行信用卡（或在下方自行輸入）</option>${rewardPaymentChoices(trip,d.payment||'')}</select>`:''}
+        <input class="wide" type="text" list="payment-list" placeholder="付款方式" value="${escapeAttr(d.payment||'')}" oninput="setExpenseDraftPayment(this.value,null);const sel=this.closest('.expense-add-grid')?.querySelector('.lulu-reward-payment-select');if(sel)sel.value=this.value">
       </div>
       <div class="receivable-draft">
-        <label class="receivable-draft-toggle"><input type="checkbox" ${d.isReceivable?'checked':''} onchange="setDraftProp('expenses','isReceivable',this.checked);if(this.checked&&!ui.newItem.expenses.receivableAmount)ui.newItem.expenses.receivableAmount=ui.newItem.expenses.amount||'';render()">⚠️ 這筆需要跟別人收錢</label>
+        <label class="receivable-draft-toggle"><input type="checkbox" ${d.isReceivable?'checked':''} onchange="expenseToggleDraftReceivable(this.checked,this)">⚠️ 這筆需要跟別人收錢</label>
         ${d.isReceivable?`<div class="receivable-draft-fields">
           <input type="text" placeholder="跟誰收？" value="${escapeAttr(d.receivablePerson||'')}" oninput="setDraftProp('expenses','receivablePerson',this.value)">
           <input type="number" placeholder="應收金額" value="${escapeAttr(d.receivableAmount||d.amount||'')}" oninput="setDraftProp('expenses','receivableAmount',this.value)">
@@ -2863,7 +2908,7 @@ function renderExpenseCompactItem(trip,cat,item,idx){
         <input type="number" value="${escapeAttr(item.amount||'')}" placeholder="金額" onchange="updateItem('expenses','${item.id}','amount',this.value)">
         <input type="text" list="currency-list" value="${escapeAttr(item.currency||'')}" placeholder="幣別" onchange="updateItem('expenses','${item.id}','currency',this.value)">
         <input type="text" list="expense-cat-list" value="${escapeAttr(item.category||'')}" placeholder="類別" onchange="updateItem('expenses','${item.id}','category',this.value)">
-        ${rewardOptions(trip).length?`<select class="wide lulu-reward-payment-select" onchange="updateItem('expenses','${item.id}','payment',this.value)"><option value="">選擇旅行信用卡</option>${rewardPaymentChoices(trip,item.payment||'')}</select>`:''}
+        ${rewardOptions(trip).length?`<select class="wide lulu-reward-payment-select" onchange="updateExpenseCardPayment('${item.id}',this.value,this)"><option value="">選擇旅行信用卡</option>${rewardPaymentChoices(trip,item.payment||'')}</select>`:''}
         <input class="wide" type="text" list="payment-list" value="${escapeAttr(item.payment||'')}" placeholder="付款方式" onchange="updateItem('expenses','${item.id}','payment',this.value)">
       </div>
       <div class="receivable-draft">
@@ -3024,7 +3069,7 @@ function addItem(catId, itemData = {}){
     currency: catId==='expenses' ? rewardCurrency(itemData.currency !== undefined ? itemData.currency : (draft.currency || '')) : (itemData.currency !== undefined ? itemData.currency : (draft.currency || '')),
     date: itemData.date || draft.date || '',
     category: itemData.category || draft.category || '吃',
-    payment: itemData.payment || draft.payment || '現金',
+    payment: itemData.payment !== undefined ? rewardNormalizePayment(itemData.payment) : rewardNormalizePayment(draft.payment || ''),
     subgroup: resolvedSubgroup,
     isReceivable: !!(itemData.isReceivable !== undefined ? itemData.isReceivable : draft.isReceivable),
     receivablePerson: itemData.receivablePerson || draft.receivablePerson || '',
@@ -3043,7 +3088,7 @@ function addItem(catId, itemData = {}){
     sortExpenseItemsByDate(trip);
   }
 
-  ui.newItem[catId] = { text:'', amount:'', currency: draft.currency || '', category:'吃', payment:'現金', date:'', day:'', note:'', link:'', subgroup: resolvedSubgroup, isReceivable:false, receivablePerson:draft.receivablePerson||'', receivableAmount:'', receivableStatus:'', receivableNote:'' };
+  ui.newItem[catId] = { text:'', amount:'', currency: draft.currency || '', category:'吃', payment:'', date:'', day:'', note:'', link:'', subgroup: resolvedSubgroup, isReceivable:false, receivablePerson:draft.receivablePerson||'', receivableAmount:'', receivableStatus:'', receivableNote:'' };
   
   scheduleSave();
   render();
@@ -3204,13 +3249,13 @@ function updateItem(catId, itemId, key, val){
   if(!trip) return;
   const item = trip.categories[catId].items.find(i=>i.id===itemId);
   if(item){
-    item[key] = (catId==='expenses' && key==='currency') ? rewardCurrency(val) : val;
+    item[key] = (catId==='expenses' && key==='currency') ? rewardCurrency(val) : (catId==='expenses' && key==='payment' ? rewardNormalizePayment(val) : val);
     if(catId==='expenses' && key==='currency')rememberExpenseCurrency(item[key]);
     if(catId === 'expenses' && key === 'date'){
       sortExpenseItemsByDate(trip);
     }
     scheduleSave();
-    if(key === 'currency' || key === 'payment' || key === 'category' || (catId === 'expenses' && key === 'date')){
+    if((catId === 'expenses' && ['currency','payment','amount','category','date'].includes(key)) || key === 'currency' || key === 'payment' || key === 'category'){
       render();
     }
   }
@@ -3308,12 +3353,20 @@ function applyBulk(catId){
         // 沒有用括號的話，就沿用原本「最後一個詞是付款方式」的判斷方式。
         let workingLine = line;
         let parsedPayment = null;
-        const payMatch = workingLine.match(/[（(]([^）)]*)[）)]/);
+        const payMatch = workingLine.match(/[（(]([^）)]*)[）)]\s*$/);
         if(payMatch){
           parsedPayment = payMatch[1].trim();
           workingLine = (workingLine.slice(0, payMatch.index) + workingLine.slice(payMatch.index + payMatch[0].length)).trim();
         }
 
+        if(parsedPayment===null){
+          const cards=rewardOptions(trip).slice().sort((a,b)=>b.name.length-a.name.length);
+          const found=cards.find(c=>rewardPaymentKey(workingLine).endsWith(rewardPaymentKey(c.name)));
+          if(found){
+            const pos=workingLine.lastIndexOf(found.name);
+            if(pos>=0){parsedPayment=found.name;workingLine=workingLine.slice(0,pos).trim();}
+          }
+        }
         let date=currentDate, category='吃', text='', amount='', currency='JPY';
 
         // 找出「金額冒號」的位置（文字後面直接接冒號、再接數字，例如「Bic Camera：15000」），
@@ -3352,6 +3405,9 @@ function applyBulk(catId){
           const rightTokens = rightPart.split(/\s+/).filter(Boolean);
           amount = rightTokens[0] || '';
           currency = rightTokens[1] || 'JPY';
+          // e.g. 1000日幣(卡名) -> amount=1000, currency=JPY
+          const amountWithCurrency=String(amount).match(/^([+-]?[\d,，]+(?:\.\d+)?)(日幣|日圓|日元|JPY|NTD|TWD|台幣|韓元|韓幣|KRW|美元|USD|歐元|EUR|泰銖|THB|新幣|SGD|港幣|HKD)$/i);
+          if(amountWithCurrency){amount=amountWithCurrency[1].replace(/[,，]/g,'');currency=rewardCurrency(amountWithCurrency[2]);}
         } else {
           // 沒有加冒號的話，沿用原本「用空白定位拆欄位」的舊邏輯（相容舊寫法；
           // 但如果品項名稱本身有空格，建議加上冒號會更準確）。
@@ -3362,6 +3418,8 @@ function applyBulk(catId){
             text = parts[2] || '';
             amount = parts[3] || '';
             currency = parts[4] || 'JPY';
+            const amountMatch=String(amount).match(/^([+-]?[\d,，]+(?:\.\d+)?)(日幣|日圓|JPY|NTD|TWD|台幣)$/i);
+            if(amountMatch){amount=amountMatch[1].replace(/[,，]/g,'');currency=rewardCurrency(amountMatch[2]);}
           } else if(parts.length >= 3){
             category = parts[0] || '其他';
             text = parts[1] || '';
@@ -3372,7 +3430,14 @@ function applyBulk(catId){
           }
         }
 
-        const payment = parsedPayment !== null ? parsedPayment : '現金';
+        // If a pasted row ends with an already-selected card name, recognize it even without parentheses.
+        // Keep explicit cash / other payments intact. Never silently infer a card from the merchant.
+        if(parsedPayment===null){
+          const cards=rewardOptions(trip).slice().sort((a,b)=>b.name.length-a.name.length);
+          const found=cards.find(c=>rewardPaymentKey(workingLine).endsWith(rewardPaymentKey(c.name)));
+          if(found)parsedPayment=found.name;
+        }
+        const payment = parsedPayment !== null ? rewardNormalizePayment(parsedPayment) : '現金';
         addItem(catId, { text, date, category, amount, currency, payment });
       }
       else if(targetSubgroup !== undefined){
@@ -3828,7 +3893,7 @@ function moveCategory(catId, direction){
 
 
 /* Luluplore credit rewards add-on: scoped to each trip, reuses existing save pipeline */
-const LULU_REWARD_CATALOG=[{"id":"ctbc_uniopen_2026h2_0","name":"中國信託 uniopen卡","region":"日本、韓國、泰國、新加坡、美洲、（歐盟排除）","spendType":"海外實體消費","pct":11.0,"composition":"海外一般2%／海外實體3% + 實體加碼8%","cap":6250.0,"method":"OPENPOINT","need":"2026年免領券","registration":"","start":"2026-07-01","valid":"2026-12-31","status":"有效","source":"https://mkt.ctbcbank.com/long/creditcard/N2025052600033_01/index.html?cttrace=1&ctid=25538_uniopen_2025&utm_campaign=25538_uniopen_2025&ctsource=google_keyword&utm_source=google_keyword&ctchannel=google_keyword&utm_medium=google_keyword&Unit=13157&Seed=6688CK001&gad_source=1&gad_campaignid=22920545198&gbraid=0AAAAAq0UcNRRAmno8iW94VuzL7-yalTli&gclid=CjwKCAjw56zWBhB0EiwAdPOQOd48xqrpY8qfeqmRPS7YsPqVVDAjXmbXuaZpP9UX5iivuVKWyuWARxoCwjcQAvD_BwE","luluNote":""},{"id":"sinopac_dual_2026h2_1","name":"永豐 幣倍卡","region":"海外通用","spendType":"海外消費","pct":6.0,"composition":"海外基本2% + 指定加碼4%","cap":20000.0,"method":"折抵帳單","need":"1. 電子帳單+永豐帳戶扣繳 2. 大戶等級或10萬平均資產","registration":"","start":"2026-07-01","valid":"2026-12-31","status":"有效","source":"https://bank.sinopac.com/sinopacBT/personal/credit-card/introduction/bankcard/dual-currency-card.html","luluNote":"新戶/新卡/新幣別+使用AP/GP\n→ 可以額外+2%，上限可刷NT$10,000"},{"id":"dbs_eco_2026h2_2","name":"星展 eco永續卡","region":"日本、韓國、泰國、新加坡、美洲、歐洲","spendType":"海外實體消費","pct":7.0,"composition":"基本1% + 指定地區加碼4% + 限時星願集刷活動加碼2%","cap":25000.0,"method":"現金回饋","need":"","registration":"限時星願集刷活動：每月需登錄（不限額）","start":"2026-07-01","valid":"2026-12-31","status":"有效","source":"https://www.dbs.com.tw/personal-zh/cards/dbs_eco/index.html","luluNote":"花旗轉卡的極簡卡，歐洲不提供回饋。\n⚠️星願集刷活動：以5筆交易為一組，且單筆交易需滿NT$888以上，這5筆交易才能享有2%回饋，每人每月上限可刷NT$25,000。\n💡 白話文解釋：不滿5筆的$888以上之消費 = 不成組\n→ 就沒有額外加碼的2%了！\n💡 無腦作法：刷到NT$15,000拿滿加碼的4%回饋上限後，剩下的就隨緣吧...😂😂\n能刷滿成組就算賺到XD"},{"id":"fubon_costco_2026h2_3","name":"富邦 Costco卡","region":"日本、韓國、泰國、歐洲","spendType":"海外實體消費","pct":5.0,"composition":"基本1% + 海外加碼4%","cap":15000.0,"method":"好多金","need":"","registration":"需登錄（每月5萬名）","start":"2026-07-01","valid":"2027-12-31","status":"有效","source":"https://www.fubon.com/banking/Personal/credit_card/all_card/Costco/costco.htm","luluNote":"每月1日00:00開放"},{"id":"dbs_aov_2026h2_4","name":"星展 傳說對決卡","region":"日本、韓國、泰國、新加坡、美洲","spendType":"海外實體消費","pct":5.0,"composition":"基本1% + 指定地區加碼4%","cap":12500.0,"method":"現金點","need":"星展帳戶扣繳","registration":"","start":"2026-07-01","valid":"2026-12-31","status":"有效","source":"https://www.dbs.com.tw/personal-zh/cards/dbs-aov/index.html","luluNote":"含花旗轉卡"},{"id":"dbs_aov_2026h2_5","name":"星展 傳說對決卡","region":"歐盟","spendType":"海外實體消費","pct":5.0,"composition":"歐盟地區加碼5%","cap":10000.0,"method":"現金點","need":"星展帳戶扣繳","registration":"","start":"2026-07-01","valid":"2026-12-31","status":"有效","source":"https://www.dbs.com.tw/personal-zh/cards/dbs-aov/index.html","luluNote":"含花旗轉卡\n歐洲上限不同其他地區！"},{"id":"sinopac_dawho_2026h2_6","name":"永豐 大戶卡","region":"海外通用","spendType":"海外外幣消費","pct":4.5,"composition":"基本2% + 大戶等級指定任務加碼2.5%","cap":16000.0,"method":"折抵帳單","need":"大戶等級：平均資產30萬或5,000元換匯","registration":"","start":"2026-07-01","valid":"2026-12-31","status":"有效","source":"https://bank.sinopac.com/sinopacBT/personal/credit-card/introduction/bankcard/DAWHO.html","luluNote":""},{"id":"esun_unicard_up_2026h2_7","name":"玉山 Unicard UP選","region":"日本、韓國、泰國等海外指定方案","spendType":"海外消費","pct":4.5,"composition":"基本1% + 加碼3.5%","cap":142857.0,"method":"玉山e-point","need":"1. 電子帳單+玉山帳戶扣繳 2. 月底前需升級UP選，升級需扣e-point 149點","registration":"","start":"2026-07-01","valid":"2026-12-31","status":"有效","source":"https://www.esunbank.com/zh-tw/personal/credit-card/intro/bank-card/unicard","luluNote":"如果當月消費有超過NT$14,900，就建議升級UP選"},{"id":"esun_unicard_2026h2_8","name":"玉山 Unicard 任意選","region":"日本、韓國、泰國等海外指定方案","spendType":"海外消費","pct":3.5,"composition":"基本1% + 加碼2.5%","cap":40000.0,"method":"玉山e-point","need":"1. 電子帳單+玉山帳戶扣繳 2. 任意選需在月底前選好指定店家(國家)","registration":"","start":"2026-07-01","valid":"2026-12-31","status":"有效","source":"https://www.esunbank.com/zh-tw/personal/credit-card/intro/bank-card/unicard","luluNote":""},{"id":"rakuten_panda_j_2026h2_9","name":"樂天 Panda J卡","region":"日本、韓國、泰國","spendType":"海外實體消費","pct":4.0,"composition":"基本1.5% + 加碼2.5%","cap":12000.0,"method":"折抵帳單","need":"","registration":"","start":"2026-07-01","valid":"2026-12-31","status":"有效","source":"https://www.card.rakuten.com.tw/corp/ads/04.xhtml","luluNote":""},{"id":"taishin_richart_2026h2_10","name":"台新 Richart卡","region":"海外通用","spendType":"海外消費","pct":3.3,"composition":"","cap":0,"method":"台新Point","need":"切換「玩旅刷」","registration":"","start":"2026-07-01","valid":"2027-03-31","status":"有效","source":"https://mkp.taishinbank.com.tw/TsCms/marketing/expose/WM_20251216135929999/index.html?utm_source=google&utm_medium=pmax&utm_campaign=cc_20251216135929999&utm_content=dailyshopping&gad_source=1&gad_campaignid=22091010688&gbraid=0AAAAABhSXuQC3w1qZNn2MHImiyasN1dFt&gclid=CjwKCAjw56zWBhB0EiwAdPOQOVZ2a8l4E0q0VHSDy3YZPw4bjtA5n8ok_r2Mhe0jRNrSi_jC4ZvFIBoCc44QAvD_BwE","luluNote":""},{"id":"mega_lido_2026h2_11","name":"兆豐 利多卡","region":"海外通用","spendType":"海外消費","pct":3.1,"composition":"基本2% + 加碼1% + 國外加碼0.1%","cap":500000.0,"method":"現金回饋","need":"電子帳單+兆豐帳戶扣繳+國內1筆消費","registration":"需登錄（不限額）","start":"2026-07-01","valid":"2026-12-31","status":"有效","source":"https://www.megabank.com.tw/personal/credit-card/card/overview/cash-rebate-biz","luluNote":""},{"id":"cathay_cube_2026h2_12","name":"國泰 CUBE卡","region":"海外通用","spendType":"海外實體消費","pct":3.0,"composition":"","cap":0,"method":"小樹點","need":"切換「趣旅行」權益","registration":"","start":"2026-07-01","valid":"2026-12-31","status":"有效","source":"https://www.cathay-cube.com.tw/cathaybk/personal/product/credit-card/cards/cube-list","luluNote":""},{"id":"cathay_cube_2026h2_13","name":"國泰 CUBE卡","region":"日本","spendType":"日本指定通路：\n\n日本實體消費\n\n愛電王實體門市\n\n大丸百貨福岡天神店\nMITSUI OUTLET PARK實體商場\n台場DiverCity Tokyo Plaza\n\nBicCamera集團實體門市\n\nApple錢包指定交通卡(Suica 、PASMO、ICOCA)\n\nGO Taxi App(預約叫車平台)","pct":3.5,"composition":"","cap":0,"method":"小樹點","need":"切換「秋日遊」權益","registration":"","start":"2026-10-01","valid":"2026-11-30","status":"有效","source":"https://www.cathay-cube.com.tw/cathaybk/personal/product/credit-card/cards/cube-list","luluNote":""},{"id":"cathay_cube_2026h2_14","name":"國泰 CUBE卡","region":"日本","spendType":"成田機場指定免稅店：\nFa-So-La DUTY FREE、JAPAN DUTY FREE、JAL DUTYFREE\n\n關西機場指定免稅店：\nKIX DUTY FREE、TRK ARRIVAL Duty Free Shop、關西旅日記\n\n新千歲機場指定免稅店：\nNew Chitose Airport Duty Free Shop\n\n福岡機場免稅店：\nFUKUOKA AIRPORT DUTYFREE SHOP","pct":4.0,"composition":"","cap":0,"method":"小樹點","need":"切換「秋日遊」權益","registration":"","start":"2026-10-01","valid":"2026-11-30","status":"有效","source":"https://www.cathay-cube.com.tw/cathaybk/personal/product/credit-card/cards/cube-list","luluNote":""},{"id":"cathay_cube_2026h2_15","name":"國泰 CUBE卡","region":"日本","spendType":"IP專賣店：\n\n寶可夢中心 5家指定門市\nSANRIO 三麗鷗 14家指定門市\nKIDDY LAND 6家指定門市\n\n人氣愛店：\n\nUNIQLO實體門市\nAlpen GROUP實體門市\nABC-MART實體門市\nLoft實體門市\n3COINS 15家指定門市\n\n餐廳預約平台：\n\nTabelog\nTableCheck\nOMAKASE","pct":5.0,"composition":"","cap":0,"method":"小樹點","need":"切換「秋日遊」權益","registration":"","start":"2026-10-01","valid":"2026-11-30","status":"有效","source":"https://www.cathay-cube.com.tw/cathaybk/personal/product/credit-card/cards/cube-list","luluNote":""},{"id":"skbank_global_2026h2_16","name":"新光 寰宇現金回饋卡","region":"海外通用（歐盟排除）","spendType":"海外消費","pct":3.0,"composition":"基本1.5% + 國內外加碼1.5%","cap":66666.0,"method":"現金回饋","need":"電子帳單+新光帳戶扣繳","registration":"","start":"2026-07-01","valid":"2026-12-27","status":"有效","source":"https://www.skbank.com.tw/credit_card/credit_card/103","luluNote":"⚠2026.10.30停止申辦及進件"},{"id":"ctbc_linepay_2026h2_17","name":"中國信託 LINE Pay卡","region":"海外通用（歐盟排除）","spendType":"海外實體消費","pct":5.0,"composition":"國外實體2.8% + 加碼2.2%","cap":20454.0,"method":"LINE POINTS","need":"限信用卡，不含金融卡","registration":"需登錄（每周二3000名）","start":"2026-07-01","valid":"2026-12-31","status":"有效","source":"https://www.ctbcbank.com/content/dam/minisite/long/creditcard/LINEPay/page_travel.html","luluNote":"每周二00:00開放"},{"id":"esun_kumamon_2026h2_18","name":"玉山 熊本熊卡","region":"日本","spendType":"指定通路：\n\n交通IC卡儲值\nSUICA、PASMO、ICOCA\n\n自駕租車\nTOYOTA Rent a Car、Times Car Rental、NIPPON RENT-A-CAR 、OTS租車、ORIX租車、Budget租車\n\n鐵路購票\nJR鐵路公司\n\n航空訂票\n日本航空\n\n住宿\n樂天旅遊、東橫INN、星野集團、Prince Hotel\n\n樂園\n東京迪士尼樂園、東京華納兄弟哈利波特影城\n日本環球影城\n豪斯登堡、九州非洲獅樂園\n名古屋樂高樂園\n吉伊卡哇樂園\n\n餐廳\n勝烈亭、敘敘苑、牛角、力丸燒肉、六歌仙燒肉\nshake shack\nDOUTOR Coffee、Fuglen\n鳥貴族\n一蘭拉麵\n松屋、SUKIYA\n壽司郎、藏壽司\n人形町今半\n\n家電\nBicCamera、Yodobashi\n\n藥妝\n松本清、唐吉軻德、大國藥妝\n\n生活雜貨\n無印良品\n\n購物商城\n日本MITSUI、LaLaport購物園區\n\n服飾品牌\nUNIQLO、GU、Montbell、Alpen","pct":8.5,"composition":"日本一般消費2.5% + 指定日本商店加碼6%","cap":8333.0,"method":"折抵帳單","need":"","registration":"需登錄1次（不限量）","start":"2026-07-01","valid":"2026-12-31","status":"有效","source":"https://event.esunbank.com.tw/credit/kumamon-card/japan-discount.html","luluNote":""},{"id":"sinopac_cash_jcb_2026h2_19","name":"永豐 現金回饋JCB卡","region":"日本","spendType":"日本日幣消費","pct":10.0,"composition":"2%無上限 + 3%日本加碼回饋 + 單季滿額加碼5%","cap":20000.0,"method":"折抵帳單","need":"1. 電子帳單+永豐帳戶扣繳；2. 單季滿額加碼活動需單季在日本/韓國/泰國消費滿NT$20,000","registration":"單季滿額5%加碼需登錄（5千名/季）","start":"2026-07-01","valid":"2027-03-31","status":"有效","source":"https://bank.sinopac.com/sinopacbt/personal/credit-card/introduction/bankcard/cashcardJCB.html","luluNote":"2%無上限 + 3%日本加碼回饋：上限可刷額度為NT$10,000；\n需加上單季滿額加碼的額外5%，上限可刷額度才會提高為NT$20,000\n⚠️[2026第四季]的額外5%加碼活動已額滿！\n⚠️[2027第一季] 2027/3/25上午10:00開放登錄"},{"id":"ubot_jko_2026h2_20","name":"聯邦 吉鶴卡","region":"日本","spendType":"指定通路：\n\n超商\n7-ELEVEN、FamilyMart、LAWSON\n\n樂園\n東京迪士尼、大阪環球影城\n\n百貨、家電、生活\n永旺、三越、高島屋\nBIC CAMERA、Yodobashi、唐吉訶德","pct":7.0,"composition":"日幣消費2.5% + 行動支付加碼1.5% + 指定商家3%","cap":20000.0,"method":"折抵帳單","need":"1. 需使用Apple Pay/Google Pay支付 2. 單筆需滿NT$100","registration":"行動支付加碼的1.5%需登錄（不限名額）","start":"2026-07-01","valid":"2026-12-31","status":"有效","source":"https://card.ubot.com.tw/CardDetail/cardDetail202","luluNote":"日本行動支付的4%（2.5%＋1.5%）上限可刷NT$40,000\n指定日本商家額外+3%的上限則只能刷NT$20,000\n**如果前月帳單滿3萬，可以在7%的基礎下再額外+1%，上限可刷NT$20,000\n⚠️官網這句話需要特別留意：\n「註：「行動支付最高加碼2.5%」活動內容包含：\n1. 登錄加碼1.5%（月上限NT$600）\n2. 前月帳單達3萬元加碼1%（月上限NT$200）」\n💡 白話文解釋：前月帳單如果沒有滿3萬，行動支付就只有加碼1.5%，而不是2.5%"},{"id":"fubon_costco_2026h2_21","name":"富邦 J卡","region":"日本、韓國、泰國","spendType":"海外實體消費","pct":6.0,"composition":"日韓泰3% + 實體店家加碼3%","cap":33333.0,"method":"LINE POINTS／現金","need":"1. 電子帳單 2. 單筆需滿NT$1,000","registration":"需登錄（2萬名/月，6萬名/季）","start":"2026-07-01","valid":"2026-12-31","status":"有效","source":"https://www.fubon.com/banking/Personal/credit_card/all_card/omiyage/omiyage.htm","luluNote":"一季只需登錄一次，登記時間為每月20號的下午4點\n回饋方式依你辦的卡片而定：Jpoint卡或是Jcash卡"},{"id":"scb_minions_2026h2_22","name":"上海商銀 小小兵卡","region":"日本、韓國","spendType":"日韓當地Apple Pay","pct":7.234,"composition":"海外2.234% + 日韓Apple Pay加碼5%","cap":6000.0,"method":"現金回饋","need":"需使用Apple Pay","registration":"需登錄（不限額）","start":"2026-07-01","valid":"2026-12-31","status":"有效","source":"https://www.scsb.com.tw/content/card/hotPage/4604","luluNote":""},{"id":"scb_simple_2026h2_23","name":"上海商銀 簡單卡","region":"日本、韓國","spendType":"日韓實體消費","pct":3.0,"composition":"","cap":0,"method":"現金回饋","need":"","registration":"","start":"2026-07-01","valid":"2026-12-31","status":"有效","source":"https://www.scsb.com.tw/content/card/card03_h1.html","luluNote":""},{"id":"sinopac_sport_2026h2_24","name":"永豐 Sport卡","region":"日本、韓國、泰國、新加坡、美洲、歐洲","spendType":"海外實體Apple Pay","pct":5.0,"composition":"基本1% + 運動獎勵1% + 指定通路3%","cap":5000.0,"method":"折抵帳單","need":"1. 電子帳單+永豐帳戶扣款 2. 每月1萬大卡運動量或10次畫圈 3. 限使用AP/GP/SP","registration":"","start":"2026-07-01","valid":"2026-12-31","status":"有效","source":"https://bank.sinopac.com/sinopacBT/personal/credit-card/introduction/bankcard/sportcard.html","luluNote":""},{"id":"chb_mylove_2026h2_25","name":"彰銀 My樂卡","region":"海外通用","spendType":"海外消費","pct":3.5,"composition":"海外基本1% + 條件加碼2.5%","cap":0,"method":"現金回饋","need":"1. 電子帳單 2. 數位帳戶月平均餘額達2萬元 3. 使用Google Pay或台灣Pay","registration":"","start":"2026-07-01","valid":"2026-12-31","status":"有效","source":"https://mylove.bankchb.com/#a","luluNote":""},{"id":"first_starlight_2026h2_26","name":"第一銀行 星璨卡","region":"海外通用（歐盟排除）","spendType":"海外實體店家","pct":3.5,"composition":"基本0.5% + 海外實體加碼3%","cap":10000.0,"method":"現金回饋","need":"電子帳單+一銀帳戶扣繳","registration":"需登錄（限2萬名）","start":"2026-07-01","valid":"2026-12-31","status":"有效","source":"https://card.firstbank.com.tw/sites/Satellite?c=CreditCard&cid=1565690686302&d=Touch&pagename=FirstBankCard%2FCreditCard%2Fzh%2FCreditCardDetailView","luluNote":""},{"id":"sunny_crystal_2026h2_27","name":"陽信 曜晶卡","region":"歐洲","spendType":"海外消費","pct":3.1,"composition":"國外2.5% + 加碼0.6%","cap":0,"method":"現金回饋","need":"","registration":"","start":"2026-07-01","valid":"2026-12-31","status":"有效","source":"https://www.sunnybank.com.tw/net/Page/Tmenu/503","luluNote":""},{"id":"ubot_lai_happy_2026h2_28","name":"聯邦 賴點卡","region":"海外通用","spendType":"海外消費","pct":3.0,"composition":"","cap":0,"method":"LINE POINTS","need":"1. 電子帳單\n2. 綁定Linepay","registration":"","start":"2026-07-01","valid":"2026-12-31","status":"有效","source":"https://activity.ubot.com.tw/2026LaiDianCard/index.htm","luluNote":""},{"id":"ubot_lai_happy_2026h2_29","name":"聯邦 M卡","region":"海外通用","spendType":"海外實體消費","pct":3.0,"composition":"","cap":0,"method":"LINE POINTS","need":"1. 電子帳單\n2. 綁定Linepay","registration":"","start":"2026-07-01","valid":"2026-12-31","status":"有效","source":"https://activity.ubot.com.tw/2026Mcard/index.htm","luluNote":""}];
+const LULU_REWARD_CATALOG=[{"id":"ctbc_uniopen_2026h2_0","name":"中國信託 uniopen卡","region":"日本、韓國、泰國、新加坡、美洲、（歐盟排除）","spendType":"海外實體消費","pct":11.0,"composition":"海外一般2%／海外實體3% + 實體加碼8%","cap":6250.0,"method":"OPENPOINT","need":"2026年免領券","registration":"","start":"2026-07-01","valid":"2026-12-31","status":"有效","source":"https://mkt.ctbcbank.com/long/creditcard/N2025052600033_01/index.html?cttrace=1&ctid=25538_uniopen_2025&utm_campaign=25538_uniopen_2025&ctsource=google_keyword&utm_source=google_keyword&ctchannel=google_keyword&utm_medium=google_keyword&Unit=13157&Seed=6688CK001&gad_source=1&gad_campaignid=22920545198&gbraid=0AAAAAq0UcNRRAmno8iW94VuzL7-yalTli&gclid=CjwKCAjw56zWBhB0EiwAdPOQOd48xqrpY8qfeqmRPS7YsPqVVDAjXmbXuaZpP9UX5iivuVKWyuWARxoCwjcQAvD_BwE","luluNote":""},{"id":"sinopac_dual_2026h2_1","name":"永豐 幣倍卡","region":"海外通用","spendType":"海外消費","pct":6.0,"composition":"海外基本2% + 指定加碼4%","cap":20000.0,"method":"折抵帳單","need":"1. 電子帳單+永豐帳戶扣繳 2. 大戶等級或10萬平均資產","registration":"","start":"2026-07-01","valid":"2026-12-31","status":"有效","source":"https://bank.sinopac.com/sinopacBT/personal/credit-card/introduction/bankcard/dual-currency-card.html","luluNote":"新戶/新卡/新幣別+使用AP/GP\n→ 可以額外+2%，上限可刷NT$10,000"},{"id":"dbs_eco_2026h2_2","name":"星展 eco永續卡","region":"日本、韓國、泰國、新加坡、美洲、歐洲","spendType":"海外實體消費","pct":7.0,"composition":"基本1% + 指定地區加碼4% + 限時星願集刷活動加碼2%","cap":25000.0,"method":"現金回饋","need":"","registration":"限時星願集刷活動：每月需登錄（不限額）","start":"2026-07-01","valid":"2026-12-31","status":"有效","source":"https://www.dbs.com.tw/personal-zh/cards/dbs_eco/index.html","luluNote":"花旗轉卡的極簡卡，歐洲不提供回饋。\n⚠️星願集刷活動：以5筆交易為一組，且單筆交易需滿NT$888以上，這5筆交易才能享有2%回饋，每人每月上限可刷NT$25,000。\n💡 白話文解釋：不滿5筆的$888以上之消費 = 不成組\n→ 就沒有額外加碼的2%了！\n💡 無腦作法：刷到NT$15,000拿滿加碼的4%回饋上限後，剩下的就隨緣吧...😂😂\n能刷滿成組就算賺到XD"},{"id":"fubon_costco_2026h2_3","name":"富邦 Costco卡","region":"日本、韓國、泰國、歐洲","spendType":"海外實體消費","pct":5.0,"composition":"基本1% + 海外加碼4%","cap":15000.0,"method":"好多金","need":"","registration":"需登錄（每月5萬名）","start":"2026-07-01","valid":"2027-12-31","status":"有效","source":"https://www.fubon.com/banking/Personal/credit_card/all_card/Costco/costco.htm","luluNote":"每月1日00:00開放"},{"id":"dbs_aov_2026h2_4","name":"星展 傳說對決卡","region":"日本、韓國、泰國、新加坡、美洲","spendType":"海外實體消費","pct":5.0,"composition":"基本1% + 指定地區加碼4%","cap":12500.0,"method":"現金點","need":"星展帳戶扣繳","registration":"","start":"2026-07-01","valid":"2026-12-31","status":"有效","source":"https://www.dbs.com.tw/personal-zh/cards/dbs-aov/index.html","luluNote":"含花旗轉卡"},{"id":"dbs_aov_2026h2_5","name":"星展 傳說對決卡","region":"歐盟","spendType":"海外實體消費","pct":5.0,"composition":"歐盟地區加碼5%","cap":10000.0,"method":"現金點","need":"星展帳戶扣繳","registration":"","start":"2026-07-01","valid":"2026-12-31","status":"有效","source":"https://www.dbs.com.tw/personal-zh/cards/dbs-aov/index.html","luluNote":"含花旗轉卡\n歐洲上限不同其他地區！"},{"id":"sinopac_dawho_2026h2_6","name":"永豐 大戶卡","region":"海外通用","spendType":"海外外幣消費","pct":4.5,"composition":"基本2% + 大戶等級指定任務加碼2.5%","cap":16000.0,"method":"折抵帳單","need":"大戶等級：平均資產30萬或5,000元換匯","registration":"","start":"2026-07-01","valid":"2026-12-31","status":"有效","source":"https://bank.sinopac.com/sinopacBT/personal/credit-card/introduction/bankcard/DAWHO.html","luluNote":""},{"id":"esun_unicard_up_2026h2_7","name":"玉山 Unicard UP選","region":"日本、韓國、泰國等海外指定方案","spendType":"海外消費","pct":4.5,"composition":"基本1% + 加碼3.5%","cap":142857.0,"method":"玉山e-point","need":"1. 電子帳單+玉山帳戶扣繳 2. 月底前需升級UP選，升級需扣e-point 149點","registration":"","start":"2026-07-01","valid":"2026-12-31","status":"有效","source":"https://www.esunbank.com/zh-tw/personal/credit-card/intro/bank-card/unicard","luluNote":"如果當月消費有超過NT$14,900，就建議升級UP選"},{"id":"esun_unicard_2026h2_8","name":"玉山 Unicard 任意選","region":"日本、韓國、泰國等海外指定方案","spendType":"海外消費","pct":3.5,"composition":"基本1% + 加碼2.5%","cap":40000.0,"method":"玉山e-point","need":"1. 電子帳單+玉山帳戶扣繳 2. 任意選需在月底前選好指定店家(國家)","registration":"","start":"2026-07-01","valid":"2026-12-31","status":"有效","source":"https://www.esunbank.com/zh-tw/personal/credit-card/intro/bank-card/unicard","luluNote":""},{"id":"rakuten_panda_j_2026h2_9","name":"樂天 Panda J卡","region":"日本、韓國、泰國","spendType":"海外實體消費","pct":4.0,"composition":"基本1.5% + 加碼2.5%","cap":12000.0,"method":"折抵帳單","need":"","registration":"","start":"2026-07-01","valid":"2026-12-31","status":"有效","source":"https://www.card.rakuten.com.tw/corp/ads/04.xhtml","luluNote":""},{"id":"taishin_richart_2026h2_10","name":"台新 Richart卡","region":"海外通用","spendType":"海外消費","pct":3.3,"composition":"","cap":0,"method":"台新Point","need":"切換「玩旅刷」","registration":"","start":"2026-07-01","valid":"2027-03-31","status":"有效","source":"https://mkp.taishinbank.com.tw/TsCms/marketing/expose/WM_20251216135929999/index.html?utm_source=google&utm_medium=pmax&utm_campaign=cc_20251216135929999&utm_content=dailyshopping&gad_source=1&gad_campaignid=22091010688&gbraid=0AAAAABhSXuQC3w1qZNn2MHImiyasN1dFt&gclid=CjwKCAjw56zWBhB0EiwAdPOQOVZ2a8l4E0q0VHSDy3YZPw4bjtA5n8ok_r2Mhe0jRNrSi_jC4ZvFIBoCc44QAvD_BwE","luluNote":""},{"id":"mega_lido_2026h2_11","name":"兆豐 利多卡","region":"海外通用","spendType":"海外消費","pct":3.1,"composition":"基本2% + 加碼1% + 國外加碼0.1%","cap":500000.0,"method":"現金回饋","need":"電子帳單+兆豐帳戶扣繳+國內1筆消費","registration":"需登錄（不限額）","start":"2026-07-01","valid":"2026-12-31","status":"有效","source":"https://www.megabank.com.tw/personal/credit-card/card/overview/cash-rebate-biz","luluNote":""},{"id":"cathay_cube_2026h2_12","name":"國泰 CUBE卡","region":"海外通用","spendType":"海外實體消費","pct":3.0,"composition":"","cap":0,"method":"小樹點","need":"切換「趣旅行」權益","registration":"","start":"2026-07-01","valid":"2026-12-31","status":"有效","source":"https://www.cathay-cube.com.tw/cathaybk/personal/product/credit-card/cards/cube-list","luluNote":""},{"id":"cathay_cube_2026h2_13","name":"國泰 CUBE卡","region":"日本","spendType":"日本指定通路：\n\n日本實體消費\n\n愛電王實體門市\n\n大丸百貨福岡天神店\nMITSUI OUTLET PARK實體商場\n台場DiverCity Tokyo Plaza\n\nBicCamera集團實體門市\n\nApple錢包指定交通卡(Suica 、PASMO、ICOCA)\n\nGO Taxi App(預約叫車平台)","pct":3.5,"composition":"","cap":0,"method":"小樹點","need":"切換「秋日遊」權益","registration":"","start":"2026-10-01","valid":"2026-11-30","status":"有效","source":"https://www.cathay-cube.com.tw/cathaybk/personal/product/credit-card/cards/cube-list","luluNote":""},{"id":"cathay_cube_2026h2_14","name":"國泰 CUBE卡","region":"日本","spendType":"成田機場指定免稅店：\nFa-So-La DUTY FREE、JAPAN DUTY FREE、JAL DUTYFREE\n\n關西機場指定免稅店：\nKIX DUTY FREE、TRK ARRIVAL Duty Free Shop、關西旅日記\n\n新千歲機場指定免稅店：\nNew Chitose Airport Duty Free Shop\n\n福岡機場免稅店：\nFUKUOKA AIRPORT DUTYFREE SHOP","pct":4.0,"composition":"","cap":0,"method":"小樹點","need":"切換「秋日遊」權益","registration":"","start":"2026-10-01","valid":"2026-11-30","status":"有效","source":"https://www.cathay-cube.com.tw/cathaybk/personal/product/credit-card/cards/cube-list","luluNote":""},{"id":"cathay_cube_2026h2_15","name":"國泰 CUBE卡","region":"日本","spendType":"IP專賣店：\n\n寶可夢中心 5家指定門市\nSANRIO 三麗鷗 14家指定門市\nKIDDY LAND 6家指定門市\n\n人氣愛店：\n\nUNIQLO實體門市\nAlpen GROUP實體門市\nABC-MART實體門市\nLoft實體門市\n3COINS 15家指定門市\n\n餐廳預約平台：\n\nTabelog\nTableCheck\nOMAKASE","pct":5.0,"composition":"","cap":0,"method":"小樹點","need":"切換「秋日遊」權益","registration":"","start":"2026-10-01","valid":"2026-11-30","status":"有效","source":"https://www.cathay-cube.com.tw/cathaybk/personal/product/credit-card/cards/cube-list","luluNote":""},{"id":"skbank_global_2026h2_16","name":"新光 寰宇現金回饋卡","region":"海外通用（歐盟排除）","spendType":"海外消費","pct":3.0,"composition":"基本1.5% + 國內外加碼1.5%","cap":66666.0,"method":"現金回饋","need":"電子帳單+新光帳戶扣繳","registration":"","start":"2026-07-01","valid":"2026-12-27","status":"有效","source":"https://www.skbank.com.tw/credit_card/credit_card/103","luluNote":"⚠2026.10.30停止申辦及進件"},{"id":"ctbc_linepay_2026h2_17","name":"中國信託 LINE Pay卡","region":"海外通用（歐盟排除）","spendType":"海外實體消費","pct":5.0,"composition":"國外實體2.8% + 加碼2.2%","cap":20454.0,"method":"LINE POINTS","need":"限信用卡，不含金融卡","registration":"需登錄（每周二3000名）","start":"2026-07-01","valid":"2026-12-31","status":"有效","source":"https://www.ctbcbank.com/content/dam/minisite/long/creditcard/LINEPay/page_travel.html","luluNote":"每周二00:00開放"},{"id":"esun_kumamon_2026h2_18","name":"玉山 熊本熊卡","region":"日本","spendType":"指定通路：\n\n交通IC卡儲值\nSUICA、PASMO、ICOCA\n\n自駕租車\nTOYOTA Rent a Car、Times Car Rental、NIPPON RENT-A-CAR 、OTS租車、ORIX租車、Budget租車\n\n鐵路購票\nJR鐵路公司\n\n航空訂票\n日本航空\n\n住宿\n樂天旅遊、東橫INN、星野集團、Prince Hotel\n\n樂園\n東京迪士尼樂園、東京華納兄弟哈利波特影城\n日本環球影城\n豪斯登堡、九州非洲獅樂園\n名古屋樂高樂園\n吉伊卡哇樂園\n\n餐廳\n勝烈亭、敘敘苑、牛角、力丸燒肉、六歌仙燒肉\nshake shack\nDOUTOR Coffee、Fuglen\n鳥貴族\n一蘭拉麵\n松屋、SUKIYA\n壽司郎、藏壽司\n人形町今半\n\n家電\nBicCamera、Yodobashi\n\n藥妝\n松本清、唐吉軻德、大國藥妝\n\n生活雜貨\n無印良品\n\n購物商城\n日本MITSUI、LaLaport購物園區\n\n服飾品牌\nUNIQLO、GU、Montbell、Alpen","pct":8.5,"composition":"日本一般消費2.5% + 指定日本商店加碼6%","cap":8333.0,"method":"折抵帳單","need":"","registration":"需登錄1次（不限量）","start":"2026-07-01","valid":"2026-12-31","status":"有效","source":"https://event.esunbank.com.tw/credit/kumamon-card/japan-discount.html","luluNote":""},{"id":"sinopac_cash_jcb_2026h2_19","name":"永豐 現金回饋JCB卡","region":"日本","spendType":"日本日幣消費","pct":10.0,"composition":"2%無上限 + 3%日本加碼回饋 + 單季滿額加碼5%","cap":20000.0,"method":"折抵帳單","need":"1. 電子帳單+永豐帳戶扣繳；2. 單季滿額加碼活動需單季在日本/韓國/泰國消費滿NT$20,000","registration":"單季滿額5%加碼需登錄（5千名/季）","start":"2026-07-01","valid":"2027-03-31","status":"有效","source":"https://bank.sinopac.com/sinopacbt/personal/credit-card/introduction/bankcard/cashcardJCB.html","luluNote":"2%無上限 + 3%日本加碼回饋：上限可刷額度為NT$10,000；\n需加上單季滿額加碼的額外5%，上限可刷額度才會提高為NT$20,000\n⚠️[2026第四季]的額外5%加碼活動已額滿！\n⚠️[2027第一季] 2027/3/25上午10:00開放登錄"},{"id":"ubot_jko_2026h2_20","name":"聯邦 吉鶴卡","region":"日本","spendType":"指定通路：\n\n超商\n7-ELEVEN、FamilyMart、LAWSON\n\n樂園\n東京迪士尼、大阪環球影城\n\n百貨、家電、生活\n永旺、三越、高島屋\nBIC CAMERA、Yodobashi、唐吉訶德","pct":7.0,"composition":"日幣消費2.5% + 行動支付加碼1.5% + 指定商家3%","cap":20000.0,"method":"折抵帳單","need":"1. 需使用Apple Pay/Google Pay支付 2. 單筆需滿NT$100","registration":"行動支付加碼的1.5%需登錄（不限名額）","start":"2026-07-01","valid":"2026-12-31","status":"有效","source":"https://card.ubot.com.tw/CardDetail/cardDetail202","luluNote":"日本行動支付的4%（2.5%＋1.5%）上限可刷NT$40,000\n指定日本商家額外+3%的上限則只能刷NT$20,000\n**如果前月帳單滿3萬，可以在7%的基礎下再額外+1%，上限可刷NT$20,000\n⚠️官網這句話需要特別留意：\n「註：「行動支付最高加碼2.5%」活動內容包含：\n1. 登錄加碼1.5%（月上限NT$600）\n2. 前月帳單達3萬元加碼1%（月上限NT$200）」\n💡 白話文解釋：前月帳單如果沒有滿3萬，行動支付就只有加碼1.5%，而不是2.5%"},{"id":"fubon_costco_2026h2_21","name":"富邦 J卡","region":"日本、韓國、泰國","spendType":"海外實體消費","pct":6.0,"composition":"日韓泰3% + 實體店家加碼3%","cap":33333.0,"method":"LINE POINTS／現金","need":"1. 電子帳單 2. 單筆需滿NT$1,000","registration":"需登錄（2萬名/月，6萬名/季）","start":"2026-07-01","valid":"2026-12-31","status":"有效","source":"https://www.fubon.com/banking/Personal/credit_card/all_card/omiyage/omiyage.htm","luluNote":"一季只需登錄一次，登記時間為每月20號的下午4點\n回饋方式依你辦的卡片而定：Jpoint卡或是Jcash卡"},{"id":"scb_minions_2026h2_22","name":"上海商銀 小小兵卡","region":"日本、韓國","spendType":"日韓當地Apple Pay","pct":7.234,"composition":"海外2.234% + 日韓Apple Pay加碼5%","cap":6000.0,"method":"現金回饋","need":"需使用Apple Pay","registration":"需登錄（不限額）","start":"2026-07-01","valid":"2026-12-31","status":"有效","source":"https://www.scsb.com.tw/content/card/hotPage/4604","luluNote":""},{"id":"scb_simple_2026h2_23","name":"上海商銀 簡單卡","region":"日本、韓國","spendType":"日韓實體消費","pct":3.0,"composition":"","cap":0,"method":"現金回饋","need":"","registration":"","start":"2026-07-01","valid":"2026-12-31","status":"有效","source":"https://www.scsb.com.tw/content/card/card03_h1.html","luluNote":""},{"id":"sinopac_sport_2026h2_24","name":"永豐 Sport卡","region":"日本、韓國、泰國、新加坡、美洲、歐洲","spendType":"海外實體Apple Pay","pct":5.0,"composition":"基本1% + 運動獎勵1% + 指定通路3%","cap":5000.0,"method":"折抵帳單","need":"1. 電子帳單+永豐帳戶扣款 2. 每月1萬大卡運動量或10次畫圈 3. 限使用AP/GP/SP","registration":"","start":"2026-07-01","valid":"2026-12-31","status":"有效","source":"https://bank.sinopac.com/sinopacBT/personal/credit-card/introduction/bankcard/sportcard.html","luluNote":""},{"id":"chb_mylove_2026h2_25","name":"彰銀 My樂卡","region":"海外通用","spendType":"海外消費","pct":3.5,"composition":"海外基本1% + 條件加碼2.5%","cap":0,"method":"現金回饋","need":"1. 電子帳單 2. 數位帳戶月平均餘額達2萬元 3. 使用Google Pay或台灣Pay","registration":"","start":"2026-07-01","valid":"2026-12-31","status":"有效","source":"https://mylove.bankchb.com/#a","luluNote":""},{"id":"first_starlight_2026h2_26","name":"第一銀行 星璨卡","region":"海外通用（歐盟排除）","spendType":"海外實體店家","pct":3.5,"composition":"基本0.5% + 海外實體加碼3%","cap":10000.0,"method":"現金回饋","need":"電子帳單+一銀帳戶扣繳","registration":"需登錄（限2萬名）","start":"2026-07-01","valid":"2026-12-31","status":"有效","source":"https://card.firstbank.com.tw/sites/Satellite?c=CreditCard&cid=1565690686302&d=Touch&pagename=FirstBankCard%2FCreditCard%2Fzh%2FCreditCardDetailView","luluNote":""},{"id":"sunny_crystal_2026h2_27","name":"陽信 曜晶卡","region":"歐洲","spendType":"海外消費","pct":3.1,"composition":"國外2.5% + 加碼0.6%","cap":0,"method":"現金回饋","need":"","registration":"","start":"2026-07-01","valid":"2026-12-31","status":"有效","source":"https://www.sunnybank.com.tw/net/Page/Tmenu/503","luluNote":""},{"id":"ubot_lai_happy_2026h2_28","name":"聯邦 賴點卡","region":"海外通用","spendType":"海外消費","pct":3.0,"composition":"","cap":0,"method":"LINE POINTS","need":"1. 電子帳單\n2. 綁定Linepay","registration":"","start":"2026-07-01","valid":"2026-12-31","status":"有效","source":"https://activity.ubot.com.tw/2026LaiDianCard/index.htm","luluNote":""},{"id":"ubot_lai_happy_2026h2_29","name":"聯邦 M卡","region":"海外通用","spendType":"海外實體消費","pct":3.0,"composition":"","cap":0,"method":"LINE POINTS","need":"1. 電子帳單\n2. 綁定Linepay","registration":"","start":"2026-07-01","valid":"2026-12-31","status":"有效","source":"https://activity.ubot.com.tw/2026Mcard/index.htm","luluNote":""},{"id":"sinopac_dawho_plus_2026h2_30","name":"永豐 大戶現金回饋卡 Plus","region":"海外通用","spendType":"海外外幣消費","pct":6.0,"composition":"國外基本2%（無上限） + 大戶Plus指定任務加碼4%","cap":25000.0,"method":"現金回饋（DAWHO帳戶）","need":"1. 具備大戶Plus等級 2. DAWHO數位帳戶自動扣繳信用卡帳款 3. 使用電子或行動帳單","registration":"無需活動登錄，須完成指定任務","start":"2026-07-01","valid":"2026-12-31","status":"有效","source":"https://bank.sinopac.com/sinopacBT/personal/credit-card/introduction/bankcard/DAWHO.html","luluNote":"💡 國外一般消費基本2%無上限，符合大戶Plus等級並完成指定任務，再加碼4%，合計最高6%\n加碼4%每月帳單週期上限NT$1,000，約可刷NT$25,000（只計加碼額度）"}];
 function rewardTrip(){return state.trips.find(t=>t.id===state.currentTripId)}
 function rewardStore(t){if(!t.categories.creditRewards)t.categories.creditRewards={selected:[],registered:{},before:{},rates:{}};return t.categories.creditRewards}
 function rewardEscape(s){return escapeHtml(String(s??'')).replace(/"/g,'&quot;').replace(/'/g,'&#39;')}
@@ -3868,9 +3933,34 @@ function rewardTripCurrencies(t){
   ];
   return [...new Set(locations.filter(([pattern])=>pattern.test(dest)).map(([,code])=>code))];
 }
-function rewardSpend(t,id){let st=rewardStore(t);return (t.categories.expenses?.items||[]).filter(i=>i.payment===LULU_REWARD_CATALOG.find(c=>c.id===id)?.name).reduce((sum,i)=>{let amount=Number(i.amount)||0;let cur=rewardCurrency(i.currency);return sum+(cur==='NTD'||cur==='TWD'?amount:amount*rewardFxRate(st,cur))},0)}
+function rewardNormalizePayment(raw){
+  return String(raw??'').replace(/^[\s💳💳️]+/u,'').replace(/\s+/g,' ').trim();
+}
+function rewardPaymentKey(raw){
+  return rewardNormalizePayment(raw).normalize('NFKC').toLowerCase().replace(/[\s\u3000·・_\-]/g,'').replace(/(?:信用卡)$/,'卡');
+}
+function rewardCardPaymentMatches(payment,cardName){
+  return !!payment && !!cardName && rewardPaymentKey(payment)===rewardPaymentKey(cardName);
+}
+function rewardExpenseAmount(raw){
+  // Existing bulk-import rows can contain values like "1000日幣" or "1,500JPY".
+  // Parse numeric amounts without changing or deleting the user's saved records.
+  if(typeof raw==='number')return Number.isFinite(raw)?raw:0;
+  const cleaned=String(raw??'').replace(/[,，\s]/g,'').replace(/^(?:NT\$|TWD|NTD|JPY|¥|￥|USD|US\$)/i,'');
+  const match=cleaned.match(/^[+-]?\d+(?:\.\d+)?/);
+  return match?Number(match[0]):0;
+}
+function rewardExpenseCurrency(item){
+  const explicit=rewardCurrency(item.currency);
+  if(explicit!=='TWD')return explicit;
+  const raw=String(item.amount??'');
+  if(/日幣|日圓|日元|JPY|円|¥|￥/i.test(raw))return 'JPY';
+  return explicit;
+}
+function rewardSpend(t,id){let st=rewardStore(t);return (t.categories.expenses?.items||[]).filter(i=>rewardCardPaymentMatches(i.payment,LULU_REWARD_CATALOG.find(c=>c.id===id)?.name)).reduce((sum,i)=>{let amount=rewardExpenseAmount(i.amount);let cur=rewardExpenseCurrency(i);return sum+(cur==='NTD'||cur==='TWD'?amount:amount*rewardFxRate(st,cur))},0)}
 function rewardDetails(c){return `<details class="lulu-rewards-conditions"><summary>查看回饋條件與 Lulu 備註</summary><div class="lulu-rewards-details"><b>消費類型</b><p>${rewardText(c.spendType)}</p><b>回饋組成</b><p>${rewardText(c.composition)}</p><b>必備條件</b><p class="lulu-rewards-need-text">${rewardNeedText(c.need)}</p><b>登錄要求</b><p>${rewardText(c.registration||'不需登錄')}</p><b>Lulu 備註</b><p>${rewardText(c.luluNote)}</p><a href="${rewardEscape(c.source)}" target="_blank" rel="noopener noreferrer">↗ 銀行官方資訊</a></div></details>`}
 const LULU_FX_ENDPOINT='https://api.frankfurter.dev/v2/rate';
+const LULU_BOT_MIRROR='https://raw.githubusercontent.com/haotool/app/data/public/rates/latest.json';
 const luluFxPending=new Set();
 const luluFxRetryAfter=new Map();
 function rewardFxRate(st,cur){const manual=Number(st.rates?.[cur]);if(manual>0)return manual;return Number(st.autoRates?.[cur]?.rate)||0}
@@ -3881,17 +3971,30 @@ function rewardFxFetch(t,currencies){
   currencies.forEach(cur=>{
     if(!/^[A-Z]{3}$/.test(cur)||cur==='TWD')return;
     const key=String(t.id)+'|'+cur;
-    if(st.autoRates[cur]?.checked===today&&Number(st.autoRates[cur]?.rate)>0)return;
+    if(st.autoRates[cur]?.checked===today&&st.autoRates[cur]?.source&&Number(st.autoRates[cur]?.rate)>0)return;
     if(luluFxPending.has(key)||Date.now()<(luluFxRetryAfter.get(key)||0))return;
     luluFxPending.add(key);
-    fetch(`${LULU_FX_ENDPOINT}/${encodeURIComponent(cur)}/TWD`,{cache:'no-store'})
-      .then(r=>{if(!r.ok)throw Error('FX HTTP '+r.status);return r.json()})
+    // 台銀即期賣出價經第三方公開資料鏡像提供；瀏覽器可直接讀取 JSON。
+    // 取不到時退回 Frankfurter 市場參考價，並在畫面標明來源。
+    fetch(LULU_BOT_MIRROR+'?t='+encodeURIComponent(today),{cache:'no-store'})
+      .then(r=>{if(!r.ok)throw Error('BOT mirror HTTP '+r.status);return r.json()})
       .then(data=>{
-        const rate=Number(data?.rate);
-        if(!(rate>0)||String(data?.quote||'').toUpperCase()!=='TWD')throw Error('Invalid FX response');
+        const rate=Number(data?.details?.[cur]?.spot?.sell);
+        if(!(rate>0))throw Error('BOT spot sell unavailable');
+        const date=String(data?.updateTime||data?.timestamp||today).slice(0,10).replace(/\//g,'-');
+        return {rate,date,source:'bot'};
+      })
+      .catch(()=>fetch(`${LULU_FX_ENDPOINT}/${encodeURIComponent(cur)}/TWD`,{cache:'no-store'})
+        .then(r=>{if(!r.ok)throw Error('FX HTTP '+r.status);return r.json()})
+        .then(data=>{
+          const rate=Number(data?.rate);
+          if(!(rate>0)||String(data?.quote||'').toUpperCase()!=='TWD')throw Error('Invalid FX response');
+          return {rate,date:data.date||today,source:'frankfurter'};
+        }))
+      .then(result=>{
         const trip=rewardTrip();if(!trip||trip.id!==t.id)return;
         const target=rewardStore(trip);target.autoRates=target.autoRates||{};
-        target.autoRates[cur]={rate,date:data.date||'',checked:today};
+        target.autoRates[cur]={rate:result.rate,date:result.date,source:result.source,checked:today};
         luluFxRetryAfter.delete(key);
         scheduleSave();render();
       })
@@ -3914,7 +4017,7 @@ function rewardFxInputValue(st,cur){
 }
 function rewardFxStatus(st,cur,t){
   const entry=st.autoRates?.[cur];
-  if(Number(entry?.rate)>0)return `參考匯率日期 ${rewardEscape(entry.date||'最新可取得日期')}，也可自行輸入匯率覆蓋`;
+  if(Number(entry?.rate)>0)return `${entry.source==='bot'?'臺銀即期賣出參考匯率（經 RateWise 整理）':entry.source==='frankfurter'?'市場參考匯率（臺銀資料暫不可用）':'既有參考匯率'}｜日期 ${rewardEscape(entry.date||'最新可取得日期')}，可自行修改`;
   if(!navigator.onLine)return '目前離線，可手動輸入匯率';
   const key=String(t.id)+'|'+cur;
   if(luluFxPending.has(key))return '自動參考匯率載入中…';
@@ -3929,10 +4032,10 @@ function rewardNeedText(v){
 function rewardText(v){return rewardEscape(v).replace(/⚠(?!️)/g,'⚠️').replace(/([。！!；;])\s*/g,'$1<br>').replace(/\n/g,'<br>')}
 function renderRewardHub(t){let st=rewardStore(t);let selected=rewardOptions(t);let allExpenses=t.categories.expenses?.items||[];let currencies=selected.length?rewardTripCurrencies(t):[];rewardFxFetch(t,currencies);return `<div class="lulu-rewards">
 <div class="lulu-rewards-title">💳 我的旅行信用卡 <span>${selected.length} 張</span></div>
-<button type="button" class="lulu-rewards-open" onclick="rewardOpenPicker()"><span class="lulu-rewards-open-label">+ 從 Lulu 精選 30 個信用卡方案加入</span><span class="lulu-rewards-open-link">查看方案 ↗</span></button>
+<button type="button" class="lulu-rewards-open" onclick="rewardOpenPicker()"><span class="lulu-rewards-open-label">+ 從 Lulu 精選 31 個信用卡方案加入</span><span class="lulu-rewards-open-link">查看方案 ↗</span></button>
 <details class="lulu-rewards-tutorial"><summary>💡 信用卡回饋怎麼自動統計？</summary><div class="lulu-rewards-tutorial-content"><div class="lulu-rewards-tutorial-steps"><div><span>①</span><b>加入信用卡</b><small>挑選這趟旅行會使用的卡片</small></div><div><span>②</span><b>新增花費</b><small>付款方式選擇對應信用卡</small></div><div><span>③</span><b>自動統計</b><small>查看已計入金額、剩餘額度與進度</small></div></div><small>此處統計刷卡額度，實際回饋仍以銀行公告與帳單為準</small></div></details>
-${currencies.length?`<div class="lulu-rewards-rates"><b>外幣換算</b><div class="lulu-rewards-rates-note">預設採用最新參考匯率<br>（僅用於信用卡額度統計使用）</div>${currencies.map(cur=>`<label>1 ${rewardEscape(cur)} = <input type="number" min="0" step="0.0001" placeholder="查詢中" value="${rewardFxInputValue(st,cur)}" onchange="rewardRate('${rewardEscape(cur)}',this.value)"> TWD <small>${rewardFxStatus(st,cur,t)}</small></label>`).join('')}</div>`:''}
-${selected.length?selected.map(c=>{let used=rewardSpend(t,c.id),before=Number(st.before[c.id])||0,total=used+before,cap=Number(c.cap)||0,pct=cap?Math.min(100,total/cap*100):0,expired=c.valid&&new Date(c.valid+'T23:59:59')<new Date();return `<div class="lulu-rewards-card"><div class="lulu-rewards-card-head"><strong>${rewardEscape(c.name)}｜${c.pct}%</strong><button onclick="rewardChoose('${c.id}',false)">移除</button></div><small>${rewardEscape(c.region)}<br>活動到期日 ${rewardEscape(c.valid)} ${expired?'｜⚠️ 已過期':''}</small>${cap?`<div class="lulu-rewards-stats"><div class="lulu-rewards-before">出發前已刷 <input type="number" min="0" placeholder="0" value="${before||''}" onchange="rewardBefore('${c.id}',this.value)"></div></div>`:''}${cap?`<div class="lulu-rewards-bar"><i style="width:${pct}%"></i></div><small>已計入 NT$${Math.round(total).toLocaleString()}／額度 NT$${cap.toLocaleString()}</small><small class="lulu-rewards-remaining">剩餘 NT$${Math.max(0,Math.round(cap-total)).toLocaleString()}</small>`:'<small class="lulu-rewards-unlimited">回饋無上限</small>'}${c.registration?`<label class="lulu-rewards-register"><input class="lulu-rewards-register-input" type="checkbox" ${st.registered[c.id]?'checked':''} onchange="rewardRegistered('${c.id}',this.checked)"><span class="lulu-rewards-register-circle" aria-hidden="true">✓</span><span>已完成銀行活動登錄</span></label>`:''}${rewardDetails(c)}</div>`}).join(''):'<div class="lulu-rewards-empty">先加入這趟會使用的信用卡<br>記帳時就能直接選擇付款卡片</div>'}
+${currencies.length?`<div class="lulu-rewards-rates"><b>外幣換算</b><div class="lulu-rewards-rates-note">優先採用臺銀即期賣出參考匯率<br>（僅用於信用卡額度統計使用）</div>${currencies.map(cur=>`<label>1 ${rewardEscape(cur)} = <input type="number" min="0" step="0.0001" placeholder="查詢中" value="${rewardFxInputValue(st,cur)}" onchange="rewardRate('${rewardEscape(cur)}',this.value)"> TWD <small>${rewardFxStatus(st,cur,t)}</small></label>`).join('')}</div>`:''}
+${selected.length?selected.map(c=>{let used=rewardSpend(t,c.id),before=Number(st.before[c.id])||0,total=used+before,cap=Number(c.cap)||0,pct=cap?Math.min(100,total/cap*100):0,expired=c.valid&&new Date(c.valid+'T23:59:59')<new Date();return `<div class="lulu-rewards-card"><div class="lulu-rewards-card-head"><strong>${rewardEscape(c.name)}｜${c.pct}%</strong><button onclick="rewardChoose('${c.id}',false)">移除</button></div><small>${rewardEscape(c.region)}<br>活動到期日 ${rewardEscape(c.valid)} ${expired?'｜⚠️ 已過期':''}</small>${cap?`<div class="lulu-rewards-stats"><div class="lulu-rewards-before">出發前已刷 <input type="number" min="0" placeholder="0" value="${before||''}" onchange="rewardBefore('${c.id}',this.value)"></div></div>`:''}${cap?`<div class="lulu-rewards-bar"><i style="width:${pct}%"></i></div><small>已計入 NT$${Math.round(total).toLocaleString()}／額度 NT$${cap.toLocaleString()}</small><small class="lulu-rewards-remaining">剩餘 NT$${Math.max(0,Math.round(cap-total)).toLocaleString()}</small>`:`<small class="lulu-rewards-unlimited">回饋無上限</small><div class="lulu-rewards-unlimited-spend">本趟累計已刷 <strong>NT$${Math.round(used).toLocaleString()}</strong></div>`}${c.registration?`<label class="lulu-rewards-register"><input class="lulu-rewards-register-input" type="checkbox" ${st.registered[c.id]?'checked':''} onchange="rewardRegistered('${c.id}',this.checked)"><span class="lulu-rewards-register-circle" aria-hidden="true">✓</span><span>已完成銀行活動登錄</span></label>`:''}${rewardDetails(c)}</div>`}).join(''):'<div class="lulu-rewards-empty">先加入這趟會使用的信用卡<br>記帳時就能直接選擇付款卡片</div>'}
 <small class="lulu-rewards-foot">💡 刷卡統計資料依「花費與記帳」連動<br>⚠️ 實際入帳金額、海外交易手續費及回饋計算，仍以發卡銀行出帳與公告為準</small></div>`}
 function rewardOpenPicker(){ui.rewardPickerOpen=true;render()}
 function rewardClosePicker(){ui.rewardPickerOpen=false;render()}
@@ -3956,7 +4059,7 @@ function rewardPickerModal(){
  const st=rewardStore(t);
  return `<div class="lulu-rewards-modal-overlay" onclick="rewardClosePicker()" role="presentation"><section class="lulu-rewards-modal" role="dialog" aria-modal="true" aria-label="精選信用卡方案" onclick="event.stopPropagation()"><div class="lulu-rewards-modal-head"><div><h2>精選信用卡方案</h2><div class="lulu-rewards-modal-disclaimer"><div>＊僅挑選海外回饋 3% 以上的信用卡</div><div>＊不包含 Apple Pay (AP)／Google Pay (GP)／Samsung Pay (SP) 之外的行動支付回饋</div></div></div><button type="button" onclick="rewardClosePicker()">關閉 ✕</button></div><div class="lulu-rewards-modal-list">${[...LULU_REWARD_CATALOG].sort((a,b)=>Number(b.pct||0)-Number(a.pct||0)).map(c=>`<article class="lulu-rewards-modal-card"><div class="lulu-rewards-modal-tag">${rewardEscape(c.region)}</div><h3>${rewardEscape(c.name)} <span>｜ ${rewardEscape(c.pct)}%</span></h3><div class="lulu-rewards-modal-meta">${c.cap?'回饋上限消費 NT$'+Number(c.cap).toLocaleString():''}${c.cap?'<br>':''}${rewardEscape(rewardPickerSpendSummary(c))}<br>活動到期日：${rewardEscape(c.valid||'依銀行公告')}</div>${rewardRegistrationBadge(c)}<button type="button" class="lulu-rewards-modal-add ${st.selected.includes(c.id)?'is-added':''}" onclick="rewardChoose('${c.id}',${!st.selected.includes(c.id)})">${st.selected.includes(c.id)?'✓ 已加入這趟旅行（點此移除）':'＋ 加入這趟旅行'}</button>${rewardDetails(c)}</article>`).join('')}</div></section></div>`;
 }
-function rewardPaymentChoices(t,current){let cards=rewardOptions(t);return cards.map(c=>`<option value="${rewardEscape(c.name)}" ${current===c.name?'selected':''}>💳 ${rewardEscape(c.name)}</option>`).join('')}
+function rewardPaymentChoices(t,current){let cards=rewardOptions(t);return cards.map(c=>`<option value="${rewardEscape(c.name)}" ${rewardCardPaymentMatches(current,c.name)?'selected':''}>💳 ${rewardEscape(c.name)}</option>`).join('')}
 
 function renderCategoryCard(trip, cat){
   const catData = trip.categories[cat.id] || { items: [] };
@@ -4143,7 +4246,7 @@ function renderCategoryCard(trip, cat){
         <input type="text" class="cur" list="currency-list" placeholder="幣別" value="${escapeAttr(draft.currency||'')}" oninput="setDraftProp('${cat.id}', 'currency', this.value)">
         <button onclick="addItem('${cat.id}')">+</button>
       </div>
-      ${renderChipRow(cat.id, 'currency', currencySuggestions(trip), draft.currency)}
+      ${renderChipRow(cat.id, 'currency', [...new Set((catData.items||[]).map(i=>String(i.currency||'').trim()).filter(Boolean))], draft.currency)}
     `;
   }
 
