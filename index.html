@@ -4769,24 +4769,6 @@ function renderModals(){
     `;
   }
 
-  if(ui.confirm){
-    html += `
-      <div class="modal-overlay">
-        <div class="modal-box">
-          <p class="modal-msg">${escapeHtml(ui.confirm.msg)}</p>
-          <div class="modal-btns">
-            <button class="modal-btn" onclick="closeModal()">${escapeHtml(ui.confirm.cancelText)}</button>
-            <button class="modal-btn danger" onclick="
-              const cb = ui.confirm.onConfirm;
-              closeModal();
-              if(cb) cb();
-            ">${escapeHtml(ui.confirm.confirmText)}</button>
-          </div>
-        </div>
-      </div>
-    `;
-  }
-
   if(ui.modalImageSrc){
     html += `
       <div class="image-modal-overlay" onclick="closeImageModal()">
@@ -4840,6 +4822,25 @@ function renderModals(){
 
           <div class="modal-btns">
             <button class="modal-btn" onclick="ui.shareModal=false;ui.shareTripId=null;render();">關閉</button>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  // 將確認視窗放在共用視窗之後，確保取消協作確認不會被原視窗遮住。
+  if(ui.confirm){
+    html += `
+      <div class="modal-overlay" style="z-index:10001;">
+        <div class="modal-box">
+          <p class="modal-msg">${escapeHtml(ui.confirm.msg)}</p>
+          <div class="modal-btns">
+            <button class="modal-btn" onclick="closeModal()">${escapeHtml(ui.confirm.cancelText)}</button>
+            <button class="modal-btn danger" onclick="
+              const cb = ui.confirm.onConfirm;
+              closeModal();
+              if(cb) cb();
+            ">${escapeHtml(ui.confirm.confirmText)}</button>
           </div>
         </div>
       </div>
@@ -4971,29 +4972,47 @@ async function addCollaborator(){
 
 function removeCollaborator(email){
   const lockedTripId = ui.shareTripId;
-  if(!lockedTripId || !currentUser) return;
-  showModal(`確定要取消「${email}」的協作權限嗎？取消後對方將無法再看到或編輯這趟行程。`, '取消協作', async ()=>{
+  const ownerUserId = currentUser?.id;
+  const localTrip = state.trips.find(t=>t.id===lockedTripId);
+  // 僅允許目前登入的建立者送出刪除請求；資料庫 RLS 仍是最終權限檢查。
+  if(!lockedTripId || !ownerUserId || !localTrip || localTrip.user_id !== ownerUserId){
+    showToast('只有行程建立者可以取消協作', true);
+    return;
+  }
+  const normalizedEmail = String(email||'').trim().toLowerCase();
+  if(!normalizedEmail || normalizedEmail === (currentUser.email||'').trim().toLowerCase()){
+    showToast('協作者資料不正確，已取消操作', true);
+    return;
+  }
+  showModal(`確定要取消「${normalizedEmail}」的協作權限嗎？取消後對方將無法再看到或編輯這趟行程。`, '取消協作', async ()=>{
     try{
-      const trip = await getLockedShareTrip();
-      if(!trip || trip.id !== lockedTripId){
-        showToast('安全檢查未通過，因此沒有刪除任何協作資料', true);
+      if(!currentUser || currentUser.id !== ownerUserId){
+        showToast('登入帳號已變更，請重新開啟協作視窗', true);
         return;
       }
-      const { error } = await supabaseClient
+      // 不再用額外的 trips SELECT 判斷刪除是否被允許：RLS 可能讓該查詢回傳空結果。
+      // 使用資料庫的 DELETE + RETURNING 確認確實刪除到指定行程、指定 Email 的紀錄。
+      const { data: removed, error } = await supabaseClient
         .from('trip_collaborators')
         .delete()
         .eq('trip_id', lockedTripId)
-        .eq('email', email);
+        .eq('email', normalizedEmail)
+        .select('email');
       if(error) throw error;
-      showToast(`已取消「${email}」的協作權限`);
-      await loadTripCollaborators();
+      if(!removed || removed.length === 0){
+        showToast('資料庫沒有刪除協作紀錄，可能是 Supabase 權限政策限制，請檢查 trip_collaborators 的 DELETE 權限', true);
+        return;
+      }
+      showToast(`已取消「${normalizedEmail}」的協作權限`);
+      if(ui.shareModal && ui.shareTripId === lockedTripId){
+        await loadTripCollaborators();
+      }
     }catch(e){
       console.error('取消協作失敗:', e);
       showToast('取消協作失敗：' + (e.message || '未知錯誤'), true);
     }
   });
 }
-
 let lastRenderedView = null;
 let lastRenderedTripId = null;
 
