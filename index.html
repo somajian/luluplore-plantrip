@@ -1454,6 +1454,14 @@ input,textarea,select{font-family:inherit;}
 .lulu-rewards-rates-note{line-height:1.7!important}
 @media(max-width:360px){.lulu-rewards-tutorial-steps>div{grid-template-columns:26px minmax(0,1fr)!important;column-gap:7px!important;padding:9px 7px!important}.lulu-rewards-tutorial-steps>div>small{font-size:10px!important}}
 </style>
+<!-- Google Analytics 4：不使用 GTM，追蹤工具造訪與建立行程事件 -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-WQ3EJKZK5N"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+  gtag('config', 'G-WQ3EJKZK5N');
+</script>
 </head>
 <body>
 <div id="app"></div>
@@ -2961,6 +2969,10 @@ function createTrip(){
     _localPending: true
   };
   state.trips.push(newT);
+  // 僅記錄建立行程動作，不傳送目的地、日期或其他個人資料
+  if (typeof gtag === 'function') {
+    gtag('event', 'trip_created');
+  }
   ui.draft = {destination:'', start:'', end:''};
   scheduleSave();
   state.currentTripId = newT.id;
